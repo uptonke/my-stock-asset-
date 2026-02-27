@@ -409,6 +409,8 @@ const { createApp, ref, computed, onMounted, watch } = Vue;
 createApp({
     setup() {
         const currentTab = ref('summary');
+        const gasApiUrl = 'https://script.google.com/macros/s/AKfycbwdQa4NWGh8nJ-pmVKWqGdwmZcWxGQvFAtlxbfQyJOWyB9ObIGNvC_rvTjf7tPupf9a/exec'; // ⚠️ 注意：保留單引號
+const isDbSyncing = ref(false); // 雲端同步狀態燈
         const showHistoryModal = ref(false);
         const isUpdating = ref(false);
         const isSimMode = ref(false);
@@ -426,12 +428,44 @@ createApp({
         const dataFrequency = ref('Monthly'); 
         const snapshotDate = ref(new Date().toISOString().split('T')[0]); 
 
-        const transactions = ref(JSON.parse(localStorage.getItem('ledgerData') || '[]'));
-        const realHistoryData = ref(JSON.parse(localStorage.getItem('historyData') || '[]'));
+        
+        // --- v17.0 雲端管線設定 ---
+        const gasApiUrl = 'https://script.google.com/macros/s/AKfycbwdQa4NWGh8nJ-pmVKWqGdwmZcWxGQvFAtlxbfQyJOWyB9ObIGNvC_rvTjf7tPupf9a/exec'; // ⚠️ 記得把這串換成你剛剛拿到的網頁應用程式網址
+        const isDbSyncing = ref(false);
+
+        // --- 變數初始化 (保留舊有的 mock 和 priceMap) ---
+        const transactions = ref([]);
+        const realHistoryData = ref([]);
         const mockHistoryData = ref([]);
         const priceMap = ref(JSON.parse(localStorage.getItem('priceMap') || '{}'));
-        const stockMeta = ref(JSON.parse(localStorage.getItem('stockMeta') || '{}'));
-        
+        const stockMeta = ref({});
+
+        // 🚀 v17.0 雲端讀取引擎 (GET)
+        async function loadDataFromCloud() {
+            isDbSyncing.value = true;
+            try {
+                const res = await fetch(gasApiUrl);
+                const data = await res.json();
+                
+                // 將雲端資料覆蓋到前端，如果雲端是空的，就讀取本機快取 (防呆機制)
+                transactions.value = JSON.parse(data.ledgerData === '[]' ? (localStorage.getItem('ledgerData') || '[]') : data.ledgerData);
+                realHistoryData.value = JSON.parse(data.historyData === '[]' ? (localStorage.getItem('historyData') || '[]') : data.historyData);
+                stockMeta.value = JSON.parse(data.stockMeta === '{}' ? (localStorage.getItem('stockMeta') || '{}') : data.stockMeta);
+                
+                // 更新本機快取
+                localStorage.setItem('ledgerData', JSON.stringify(transactions.value));
+                localStorage.setItem('historyData', JSON.stringify(realHistoryData.value));
+                localStorage.setItem('stockMeta', JSON.stringify(stockMeta.value));
+            } catch (error) {
+                console.error("API 呼叫失敗，啟用本機快取", error);
+                transactions.value = JSON.parse(localStorage.getItem('ledgerData') || '[]');
+                realHistoryData.value = JSON.parse(localStorage.getItem('historyData') || '[]');
+                stockMeta.value = JSON.parse(localStorage.getItem('stockMeta') || '{}');
+            } finally {
+                isDbSyncing.value = false;
+                updateCharts();
+            }
+        }
         const txForm = ref({ date: new Date().toISOString().split('T')[0], type: 'Buy', category: '美股', ticker: '', price: null, shares: null });
         const historyForm = ref({ date: new Date().toISOString().split('T')[0], assets: null, cost: null });
 
@@ -722,7 +756,32 @@ createApp({
         }
         
         function removeHistoryByDate(date) { if(confirm('Del?')) { realHistoryData.value = realHistoryData.value.filter(h=>h.date!==date); localStorage.setItem('historyData', JSON.stringify(realHistoryData.value)); updateCharts(); } }
-        function saveData() { localStorage.setItem('ledgerData', JSON.stringify(transactions.value)); }
+        // 🚀 v17.0 雲端同步引擎
+async function saveData() { 
+    // 1. 先存本機 (確保畫面即時反應)
+    localStorage.setItem('ledgerData', JSON.stringify(transactions.value)); 
+    localStorage.setItem('historyData', JSON.stringify(realHistoryData.value));
+    localStorage.setItem('stockMeta', JSON.stringify(stockMeta.value));
+
+    // 2. 背景打包拋送雲端 (NoSQL 暴力寫入)
+    isDbSyncing.value = true;
+    try {
+        const payload = {
+            ledgerData: JSON.stringify(transactions.value),
+            historyData: JSON.stringify(realHistoryData.value),
+            stockMeta: JSON.stringify(stockMeta.value)
+        };
+        await fetch(gasApiUrl, {
+            method: 'POST',
+            body: JSON.stringify(payload) // 故意不加 Headers，避開 CORS 阻擋
+        });
+        console.log("雲端同步成功 (Sync Complete)");
+    } catch (e) {
+        console.error("雲端同步失敗", e);
+    } finally {
+        isDbSyncing.value = false;
+    }
+}
         function exportAll() { const data = { ledger: transactions.value, history: realHistoryData.value, stockMeta: stockMeta.value }; const link = document.createElement("a"); link.href = URL.createObjectURL(new Blob([JSON.stringify(data)], {type: "application/json"})); link.download = "backup.json"; link.click(); }
         function importData(event) {
             const file = event.target.files[0]; if (!file) return; const reader = new FileReader();
@@ -889,7 +948,9 @@ createApp({
             });
         }
         
-        onMounted(() => { setTimeout(updateCharts, 500); });
+        onMounted(() => { 
+    loadDataFromCloud(); 
+});
         watch(currentTab, () => { setTimeout(initCharts, 100); setTimeout(updateCharts, 200); });
         watch([exchangeRate, sheetUrl, isSimMode, riskParams, quantStartDate, dataFrequency], () => updateCharts(), {deep:true});
 
