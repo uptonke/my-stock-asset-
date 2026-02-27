@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>股票紀錄 v17.0 (ENTJ Quant Fix)</title>
+    <title>股票紀錄 v17.0 (Cloud SaaS Edition)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -48,6 +48,7 @@
                 <i class="fas fa-chart-line text-yellow-500"></i> Stock Portfolio
                 <span v-if="!isSimMode" class="text-xs bg-yellow-600 px-2 py-0.5 rounded text-black font-bold">v17.0</span>
                 <span v-else class="text-xs bg-red-600 px-2 py-0.5 rounded text-white font-bold animate-pulse">SIMULATION</span>
+                <i v-if="isDbSyncing" class="fas fa-cloud-upload-alt animate-bounce text-blue-400 text-sm ml-2" title="雲端同步中"></i>
             </h1>
             
             <div class="hidden md:flex items-center gap-3 bg-slate-800 py-1 px-3 rounded-lg border border-slate-700">
@@ -197,8 +198,8 @@
                                         <td class="text-right font-mono font-bold text-yellow-400">
                                             <div class="flex items-center justify-end gap-2">
                                                  <input v-model.number="stock.manualPrice" @change="manualUpdate(stock)" 
-                                                       class="w-20 bg-transparent text-right outline-none border-b border-gray-600"
-                                                       :placeholder="stock.fetchedPrice || (stock.isUSD ? 'USD' : 'TWD')">
+                                                        class="w-20 bg-transparent text-right outline-none border-b border-gray-600"
+                                                        :placeholder="stock.fetchedPrice || (stock.isUSD ? 'USD' : 'TWD')">
                                             </div>
                                         </td>
                                         <td class="text-right font-mono text-white font-bold">{{ formatNumber(stock.marketValueTwd) }}</td>
@@ -409,8 +410,11 @@ const { createApp, ref, computed, onMounted, watch } = Vue;
 createApp({
     setup() {
         const currentTab = ref('summary');
-        const gasApiUrl = 'https://script.google.com/macros/s/AKfycbwdQa4NWGh8nJ-pmVKWqGdwmZcWxGQvFAtlxbfQyJOWyB9ObIGNvC_rvTjf7tPupf9a/exec'; // ⚠️ 注意：保留單引號
-const isDbSyncing = ref(false); // 雲端同步狀態燈
+        
+        // --- v17.0 雲端管線設定 ---
+        const gasApiUrl = 'https://script.google.com/macros/s/AKfycbwdQa4NWGh8nJ-pmVKWqGdwmZcWxGQvFAtlxbfQyJOWyB9ObIGNvC_rvTjf7tPupf9a/exec'; 
+        const isDbSyncing = ref(false); // 雲端同步狀態燈
+
         const showHistoryModal = ref(false);
         const isUpdating = ref(false);
         const isSimMode = ref(false);
@@ -424,14 +428,8 @@ const isDbSyncing = ref(false); // 雲端同步狀態燈
 
         const riskParams = ref({ rf: 1.5, beta: 1.0, rm: 10.0, sm: 15.0 });
         const quantStartDate = ref(''); 
-        // Force Monthly data frequency as requested
         const dataFrequency = ref('Monthly'); 
         const snapshotDate = ref(new Date().toISOString().split('T')[0]); 
-
-        
-        // --- v17.0 雲端管線設定 ---
-        const gasApiUrl = 'https://script.google.com/macros/s/AKfycbwdQa4NWGh8nJ-pmVKWqGdwmZcWxGQvFAtlxbfQyJOWyB9ObIGNvC_rvTjf7tPupf9a/exec'; // ⚠️ 記得把這串換成你剛剛拿到的網頁應用程式網址
-        const isDbSyncing = ref(false);
 
         // --- 變數初始化 (保留舊有的 mock 和 priceMap) ---
         const transactions = ref([]);
@@ -466,6 +464,7 @@ const isDbSyncing = ref(false); // 雲端同步狀態燈
                 updateCharts();
             }
         }
+
         const txForm = ref({ date: new Date().toISOString().split('T')[0], type: 'Buy', category: '美股', ticker: '', price: null, shares: null });
         const historyForm = ref({ date: new Date().toISOString().split('T')[0], assets: null, cost: null });
 
@@ -491,7 +490,7 @@ const isDbSyncing = ref(false); // 雲端同步狀態燈
                     beta: stock.beta,
                     std: stock.stdDev
                 };
-               localStorage.setItem('stockMeta', JSON.stringify(stockMeta.value));
+                saveData(); // Meta 變更也要上雲
             }
         }
 
@@ -638,7 +637,6 @@ const isDbSyncing = ref(false); // 雲端同步狀態燈
         const totalStockUnrealizedPL = computed(() => totalStockValueTwd.value - totalStockCostTwd.value);
         const totalStockReturnRate = computed(() => totalStockCostTwd.value ? ((totalStockUnrealizedPL.value/totalStockCostTwd.value)*100).toFixed(2) : 0);
         
-        // Use a computed property to serve the reversed list for display, but keep original for logic
         const reversedTransactions = computed(() => [...transactions.value].reverse());
 
         const filteredHistory = computed(() => {
@@ -679,10 +677,8 @@ const isDbSyncing = ref(false); // 雲端同步狀態燈
              if (returns.length < 2) return empty;
 
              const cumTwr = returns.reduce((acc, r) => acc * (1 + r), 1) - 1;
-             // Hardcoded factor for Monthly data as requested
              const factor = Math.sqrt(12);
              
-             // Approximate years based on monthly data points
              const years = returns.length / 12;
              const annRet = years > 0 ? (Math.pow(1 + cumTwr, 1 / years) - 1) : 0;
 
@@ -713,7 +709,6 @@ const isDbSyncing = ref(false); // 雲端同步狀態燈
              const idx95 = Math.floor(sortedReturns.length * 0.05);
              const var95 = sortedReturns[idx95] || 0;
 
-             // --- SKEWNESS & KURTOSIS CALCULATION (Population) ---
              const n = returns.length;
              const stdPop = Math.sqrt(returns.reduce((a,b)=>a+Math.pow(b-avgR, 2),0)/n);
              
@@ -725,7 +720,7 @@ const isDbSyncing = ref(false); // 雲端同步狀態燈
              });
 
              const skewness = (sumCubed / n) / Math.pow(stdPop, 3);
-             const kurtosis = ((sumQuart / n) / Math.pow(stdPop, 4)) - 3; // Excess Kurtosis
+             const kurtosis = ((sumQuart / n) / Math.pow(stdPop, 4)) - 3; 
 
              return { 
                  annRet: (annRet*100).toFixed(2), 
@@ -743,7 +738,6 @@ const isDbSyncing = ref(false); // 雲端同步狀態燈
         // --- BASIC CRUD ---
         function manualUpdate(stock) { if(stock.manualPrice) { priceMap.value[stock.ticker] = stock.manualPrice; localStorage.setItem('priceMap', JSON.stringify(priceMap.value)); } }
         
-        // FIXED: Deletion Logic to find the actual object instead of relying on index
         function removeTransaction(txToRemove) { 
             if(confirm('確認刪除此筆交易?')) { 
                 const idx = transactions.value.indexOf(txToRemove);
@@ -755,40 +749,46 @@ const isDbSyncing = ref(false); // 雲端同步狀態燈
             } 
         }
         
-        function removeHistoryByDate(date) { if(confirm('Del?')) { realHistoryData.value = realHistoryData.value.filter(h=>h.date!==date); localStorage.setItem('historyData', JSON.stringify(realHistoryData.value)); updateCharts(); } }
-        // 🚀 v17.0 雲端同步引擎
-async function saveData() { 
-    // 1. 先存本機 (確保畫面即時反應)
-    localStorage.setItem('ledgerData', JSON.stringify(transactions.value)); 
-    localStorage.setItem('historyData', JSON.stringify(realHistoryData.value));
-    localStorage.setItem('stockMeta', JSON.stringify(stockMeta.value));
+        function removeHistoryByDate(date) { 
+            if(confirm('確定刪除此快照?')) { 
+                realHistoryData.value = realHistoryData.value.filter(h=>h.date!==date); 
+                saveData();
+                updateCharts(); 
+            } 
+        }
 
-    // 2. 背景打包拋送雲端 (NoSQL 暴力寫入)
-    isDbSyncing.value = true;
-    try {
-        const payload = {
-            ledgerData: JSON.stringify(transactions.value),
-            historyData: JSON.stringify(realHistoryData.value),
-            stockMeta: JSON.stringify(stockMeta.value)
-        };
-        await fetch(gasApiUrl, {
-            method: 'POST',
-            body: JSON.stringify(payload) // 故意不加 Headers，避開 CORS 阻擋
-        });
-        console.log("雲端同步成功 (Sync Complete)");
-    } catch (e) {
-        console.error("雲端同步失敗", e);
-    } finally {
-        isDbSyncing.value = false;
-    }
-}
+        // 🚀 v17.0 雲端同步引擎
+        async function saveData() { 
+            localStorage.setItem('ledgerData', JSON.stringify(transactions.value)); 
+            localStorage.setItem('historyData', JSON.stringify(realHistoryData.value));
+            localStorage.setItem('stockMeta', JSON.stringify(stockMeta.value));
+
+            isDbSyncing.value = true;
+            try {
+                const payload = {
+                    ledgerData: JSON.stringify(transactions.value),
+                    historyData: JSON.stringify(realHistoryData.value),
+                    stockMeta: JSON.stringify(stockMeta.value)
+                };
+                await fetch(gasApiUrl, {
+                    method: 'POST',
+                    body: JSON.stringify(payload) 
+                });
+                console.log("雲端同步成功 (Sync Complete)");
+            } catch (e) {
+                console.error("雲端同步失敗", e);
+            } finally {
+                isDbSyncing.value = false;
+            }
+        }
+
         function exportAll() { const data = { ledger: transactions.value, history: realHistoryData.value, stockMeta: stockMeta.value }; const link = document.createElement("a"); link.href = URL.createObjectURL(new Blob([JSON.stringify(data)], {type: "application/json"})); link.download = "backup.json"; link.click(); }
         function importData(event) {
             const file = event.target.files[0]; if (!file) return; const reader = new FileReader();
             reader.onload = (e) => {
                 const data = JSON.parse(e.target.result);
                 transactions.value = data.ledger; realHistoryData.value = data.history; if(data.stockMeta) stockMeta.value = data.stockMeta;
-                saveData(); localStorage.setItem('historyData', JSON.stringify(realHistoryData.value)); localStorage.setItem('stockMeta', JSON.stringify(stockMeta.value)); updateCharts(); alert('匯入成功');
+                saveData(); updateCharts(); alert('匯入成功，已同步至雲端');
             }; reader.readAsText(file);
         }
         
@@ -825,12 +825,12 @@ async function saveData() {
                 realHistoryData.value.push({ date, assets, cost });
             }
             
-            localStorage.setItem('historyData', JSON.stringify(realHistoryData.value));
+            saveData();
             updateCharts();
             if(!quantStartDate.value) quantStartDate.value = date;
         }
 
-        function addHistoryRecord() { const { date, assets, cost } = historyForm.value; realHistoryData.value.push({ date, assets, cost }); localStorage.setItem('historyData', JSON.stringify(realHistoryData.value)); updateCharts(); }
+        function addHistoryRecord() { const { date, assets, cost } = historyForm.value; realHistoryData.value.push({ date, assets, cost }); saveData(); updateCharts(); }
         
         function generateMonthlyMockData() { 
              mockHistoryData.value = [];
@@ -949,12 +949,13 @@ async function saveData() {
         }
         
         onMounted(() => { 
-    loadDataFromCloud(); 
-});
+            loadDataFromCloud(); 
+        });
+        
         watch(currentTab, () => { setTimeout(initCharts, 100); setTimeout(updateCharts, 200); });
         watch([exchangeRate, sheetUrl, isSimMode, riskParams, quantStartDate, dataFrequency], () => updateCharts(), {deep:true});
 
-        return { currentTab, showHistoryModal, isUpdating, isSimMode, toggleSimMode, transactions, groupedHoldings, categoryTotals, riskTotals, portfolioStats, totalStockValueTwd, totalStockCostTwd, totalStockUnrealizedPL, totalStockReturnRate, reversedTransactions, txForm, historyForm, riskParams, stats, exchangeRate, sheetUrl, addTransaction, addHistoryRecord, generateMonthlyMockData, removeTransaction, removeHistoryByDate, manualUpdate, updateMeta, fetchPrices, exportAll, importData, getTypeColor, getCategoryColorCode, formatNumber, formatPercent, lastUpdate, displayHistory, enrichedHistory, quantStartDate, dataFrequency, snapshotToHistory, snapshotDate };
+        return { currentTab, showHistoryModal, isUpdating, isSimMode, toggleSimMode, transactions, groupedHoldings, categoryTotals, riskTotals, portfolioStats, totalStockValueTwd, totalStockCostTwd, totalStockUnrealizedPL, totalStockReturnRate, reversedTransactions, txForm, historyForm, riskParams, stats, exchangeRate, sheetUrl, addTransaction, addHistoryRecord, generateMonthlyMockData, removeTransaction, removeHistoryByDate, manualUpdate, updateMeta, fetchPrices, exportAll, importData, getTypeColor, getCategoryColorCode, formatNumber, formatPercent, lastUpdate, displayHistory, enrichedHistory, quantStartDate, dataFrequency, snapshotToHistory, snapshotDate, isDbSyncing };
     }
 }).mount('#app');
 </script>
