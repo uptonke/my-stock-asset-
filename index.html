@@ -1,0 +1,901 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>股票紀錄 v17.0 (ENTJ Quant Fix)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        body { font-family: 'Microsoft JhengHei', 'Segoe UI', Roboto, sans-serif; background-color: #0f172a; color: #e2e8f0; }
+        .glass { background: rgba(30, 41, 59, 0.95); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.08); box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2); }
+        .glass-sim { background: rgba(50, 20, 20, 0.95); backdrop-filter: blur(12px); border: 1px solid rgba(255, 100, 100, 0.2); }
+        .input-dark { background: #1e293b; border: 1px solid #475569; color: white; transition: all 0.2s; }
+        .input-dark:focus { border-color: #fbbf24; ring: 2px; outline: none; }
+        .tab-active { border-bottom: 2px solid #fbbf24; color: #fbbf24; font-weight: bold; text-shadow: 0 0 8px rgba(251, 191, 36, 0.3); }
+        .tab-inactive { color: #94a3b8; }
+        .btn-purple { background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%); color: white; }
+        .btn-gold { background: linear-gradient(135deg, #fbbf24 0%, #d97706 100%); color: black; }
+        
+        .quant-card { background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 0.75rem; padding: 1rem; text-align: center; }
+        .quant-label { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.25rem; opacity: 0.8; }
+        .quant-value { font-family: 'Courier New', monospace; font-weight: bold; font-size: 1.25rem; }
+        
+        .excel-table th { background-color: #1e293b; color: #94a3b8; font-weight: 600; font-size: 0.75rem; text-transform: uppercase; border-bottom: 2px solid #334155; }
+        .excel-table td { border-bottom: 1px solid #334155; padding: 0.75rem 1rem; }
+        .excel-table tr:hover td { background-color: rgba(255,255,255,0.03); }
+        .group-header { background-color: #334155; color: #fbbf24; font-weight: bold; font-size: 0.8rem; letter-spacing: 0.05em; }
+
+        .risk-select { background: transparent; border: 1px solid #475569; padding: 2px 4px; border-radius: 4px; font-size: 0.75rem; cursor: pointer; }
+        .risk-high { color: #f87171; border-color: #f87171; }
+        .risk-low { color: #34d399; border-color: #34d399; }
+
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #0f172a; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+    </style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden text-sm">
+
+<div id="app" class="h-full flex flex-col transition-colors duration-500" :class="isSimMode ? 'bg-[#1a0505]' : 'bg-[#0f172a]'">
+    
+    <header class="z-50 flex-none h-16 px-6 flex items-center justify-between shadow-lg transition-colors duration-500" :class="isSimMode ? 'glass-sim' : 'glass'">
+        <div class="flex items-center gap-6">
+            <h1 class="font-bold text-xl tracking-wide flex items-center gap-2 text-white">
+                <i class="fas fa-chart-line text-yellow-500"></i> Stock Portfolio
+                <span v-if="!isSimMode" class="text-xs bg-yellow-600 px-2 py-0.5 rounded text-black font-bold">v17.0</span>
+                <span v-else class="text-xs bg-red-600 px-2 py-0.5 rounded text-white font-bold animate-pulse">SIMULATION</span>
+            </h1>
+            
+            <div class="hidden md:flex items-center gap-3 bg-slate-800 py-1 px-3 rounded-lg border border-slate-700">
+                <span class="text-gray-400 text-xs">USD/TWD:</span>
+                <input v-model.number="exchangeRate" type="number" step="0.01" class="w-16 bg-transparent text-center font-mono font-bold text-green-400 focus:outline-none border-b border-gray-600">
+            </div>
+
+            <div class="hidden md:flex items-center gap-2 bg-slate-800 py-1 px-3 rounded-lg border border-slate-700 w-80">
+                <i class="fab fa-google text-green-500"></i>
+                <input v-model="sheetUrl" placeholder="貼上 Google Sheet 網址" class="w-full bg-transparent text-xs text-white focus:outline-none placeholder-gray-500">
+            </div>
+
+            <nav class="flex gap-6 font-medium ml-4 hidden md:flex">
+                <button @click="currentTab='summary'" :class="currentTab==='summary'?'tab-active':'tab-inactive'" class="py-4 px-2 transition">總覽</button>
+                <button @click="currentTab='holdings'" :class="currentTab==='holdings'?'tab-active':'tab-inactive'" class="py-4 px-2 transition">庫存</button>
+                <button @click="currentTab='advanced'" :class="currentTab==='advanced'?'tab-active':'tab-inactive'" class="py-4 px-2 transition"><i class="fas fa-chart-network mr-1"></i>分析</button>
+                <button @click="currentTab='analytics'" :class="currentTab==='analytics'?'tab-active':'tab-inactive'" class="py-4 px-2 transition">量化 (Quant)</button>
+                <button @click="currentTab='ledger'" :class="currentTab==='ledger'?'tab-active':'tab-inactive'" class="py-4 px-2 transition">記帳</button>
+            </nav>
+       </div>
+       <div class="flex gap-3 items-center">
+             <div class="flex items-center mr-4">
+                <span class="text-xs mr-2 font-bold" :class="isSimMode ? 'text-red-400' : 'text-gray-400'">{{ isSimMode ? '模擬模式' : '真實模式' }}</span>
+                <button @click="toggleSimMode" class="relative inline-flex items-center h-6 rounded-full w-11 transition-colors focus:outline-none" :class="isSimMode ? 'bg-red-600' : 'bg-gray-600'">
+                    <span class="inline-block w-4 h-4 transform bg-white rounded-full transition-transform" :class="isSimMode ? 'translate-x-6' : 'translate-x-1'"></span>
+                </button>
+             </div>
+             <button @click="fetchPrices" class="p-2 text-blue-400 hover:text-white transition" title="從 Sheet 更新"><i class="fas fa-sync-alt" :class="{'fa-spin': isUpdating}"></i></button>
+             <label class="p-2 text-yellow-400 hover:text-white transition cursor-pointer" title="匯入備份">
+                 <i class="fas fa-file-upload"></i>
+                 <input type="file" @change="importData" class="hidden" accept=".json">
+             </label>
+             <button @click="exportAll" class="p-2 text-green-400 hover:text-white transition" title="匯出備份"><i class="fas fa-download"></i></button>
+       </div>
+    </header>
+
+    <main class="flex-1 overflow-y-auto p-4 md:p-6 transition-colors duration-500">
+        <div class="max-w-7xl mx-auto h-full space-y-6">
+
+            <div v-if="currentTab === 'summary'" class="animate-fade-in space-y-6">
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+                    <div class="glass p-6 rounded-2xl border-t-4 border-yellow-500">
+                        <div class="text-xs text-gray-400 font-bold uppercase">投資總市值 (TWD)</div>
+                        <div class="text-3xl font-bold text-white mt-2 font-mono">NT$ {{ formatNumber(totalStockValueTwd) }}</div>
+                    </div>
+                    <div class="glass p-6 rounded-2xl border-t-4 border-emerald-500">
+                        <div class="text-xs text-gray-400 font-bold uppercase">投資總成本 (TWD)</div>
+                        <div class="text-3xl font-bold text-white mt-2 font-mono">NT$ {{ formatNumber(totalStockCostTwd) }}</div>
+                    </div>
+                    <div class="glass p-6 rounded-2xl border-t-4" :class="totalStockUnrealizedPL >= 0 ? 'border-red-500' : 'border-green-500'">
+                        <div class="text-xs text-gray-400 font-bold uppercase">未實現損益</div>
+                        <div class="text-3xl font-bold mt-2 font-mono" :class="totalStockUnrealizedPL >= 0 ? 'text-red-400' : 'text-green-400'">
+                            {{ totalStockUnrealizedPL >= 0 ? '+' : '' }}{{ formatNumber(totalStockUnrealizedPL) }}
+                        </div>
+                        <div class="text-sm font-bold mt-1" :class="totalStockUnrealizedPL >= 0 ? 'text-red-400' : 'text-green-400'">
+                            報酬率: {{ totalStockReturnRate }}%
+                        </div>
+                    </div>
+                    <div class="glass p-6 rounded-2xl border-t-4 border-purple-500 flex flex-col justify-center">
+                         <div class="text-xs text-gray-400 font-bold uppercase mb-3">類別配置</div>
+                         <div class="space-y-3">
+                             <div v-for="(val, cat) in categoryTotals" :key="cat">
+                                 <div class="flex justify-between text-xs mb-1">
+                                     <span class="text-white">{{ cat }}</span>
+                                     <span class="font-mono text-gray-300">{{ formatPercent(val / totalStockValueTwd) }}</span>
+                                 </div>
+                                 <div class="bg-gray-700 h-1.5 rounded-full overflow-hidden">
+                                     <div class="h-full" :style="{ width: ((val / totalStockValueTwd) * 100) + '%', backgroundColor: getCategoryColorCode(cat) }"></div>
+                                 </div>
+                             </div>
+                         </div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 h-96">
+                    <div class="glass p-5 rounded-2xl col-span-1 flex flex-col">
+                        <h4 class="text-white font-bold mb-4 border-l-4 border-yellow-500 pl-3">資產配置</h4>
+                        <div class="flex-1 relative"><canvas id="allocationChart"></canvas></div>
+                    </div>
+                    <div class="glass p-5 rounded-2xl col-span-2 flex flex-col">
+                        <div class="flex justify-between items-center mb-4 border-l-4 border-emerald-500 pl-3">
+                            <h4 class="text-white font-bold">淨值成長趨勢 (NAV)</h4>
+                        </div>
+                        <div class="flex-1 relative">
+                            <canvas id="historyChart"></canvas>
+                             <div v-if="displayHistory.length < 2" class="absolute inset-0 flex items-center justify-center text-gray-500 text-xs bg-gray-900/50 rounded-lg">
+                                <p>需要更多歷史數據</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div v-if="currentTab === 'holdings'" class="flex flex-col h-full max-h-[85vh] space-y-4 animate-fade-in">
+                <div class="glass rounded-xl overflow-hidden flex flex-col flex-1">
+                    <div class="p-4 bg-gray-800/50 border-b border-gray-700 flex justify-between items-center">
+                        <h3 class="font-bold text-white"><i class="fas fa-layer-group text-yellow-500 mr-2"></i>庫存明細 (Risk Monitor)</h3>
+                        <div class="text-xs text-gray-400">
+                             <span v-if="lastUpdate" class="text-green-400 mr-2">更新於: {{ lastUpdate }}</span>
+                             <span class="text-red-400 font-bold ml-2"><i class="fas fa-exclamation-triangle"></i> 警告: 單一類別佔比 > 15%</span>
+                        </div>
+                    </div>
+                    
+                    <div class="overflow-auto flex-1 p-0">
+                        <table class="w-full text-left whitespace-nowrap excel-table">
+                            <thead>
+                                <tr>
+                                    <th class="pl-6">代號</th>
+                                    <th>風險</th>
+                                    <th class="text-center w-16" title="Beta 係數">Beta (β)</th>
+                                    <th class="text-center w-16" title="年化標準差">SD (σ%)</th>
+                                    <th class="text-right">持有股數</th>
+                                    <th class="text-right">均價(TWD)</th>
+                                    <th class="text-right">現價(TWD)</th>
+                                    <th class="text-right">市值(TWD)</th>
+                                    <th class="text-right">報酬率</th>
+                                    <th class="text-right pr-6">權重% (類別內)</th>
+                                </tr>
+                            </thead>
+                            <tbody class="text-sm">
+                                <template v-for="(group, catName) in groupedHoldings" :key="catName">
+                                    <tr class="group-header">
+                                        <td colspan="10" class="pl-6 py-2 border-t border-b border-gray-600">
+                                           <i class="fas fa-folder-open mr-2"></i> {{ catName }} 
+                                           <span class="text-gray-400 text-xs font-normal ml-2">(Total: {{ formatNumber(group.totalValue) }})</span>
+                                        </td>
+                                    </tr>
+                                    <tr v-for="stock in group.items" :key="stock.ticker" class="hover:bg-white/5">
+                                        <td class="pl-6 font-bold text-white flex items-center gap-2">
+                                            {{ stock.ticker }}
+                                            <span v-if="stock.isUSD" class="text-[9px] bg-gray-700 px-1 rounded text-gray-300">USD</span>
+                                        </td>
+                                        <td>
+                                            <select v-model="stock.riskLevel" @change="updateMeta(stock)" class="risk-select" :class="stock.riskLevel === 'Low' ? 'risk-low' : 'risk-high'">
+                                                 <option value="High">High</option><option value="Low">Low</option>
+                                            </select>
+                                        </td>
+                                        <td>
+                                            <input v-model.number="stock.beta" @change="updateMeta(stock)" class="w-12 bg-transparent text-center border-b border-gray-600 focus:border-yellow-400 outline-none text-yellow-400" placeholder="1.0">
+                                        </td>
+                                        <td>
+                                            <input v-model.number="stock.stdDev" @change="updateMeta(stock)" class="w-12 bg-transparent text-center border-b border-gray-600 focus:border-yellow-400 outline-none text-yellow-400" placeholder="20">
+                                        </td>
+
+                                        <td class="text-right font-mono text-gray-300">{{ formatNumber(stock.shares) }}</td>
+                                        <td class="text-right font-mono text-gray-400">{{ formatNumber(stock.avgCostTwd) }}</td>
+                                        <td class="text-right font-mono font-bold text-yellow-400">
+                                            <div class="flex items-center justify-end gap-2">
+                                                 <input v-model.number="stock.manualPrice" @change="manualUpdate(stock)" 
+                                                       class="w-20 bg-transparent text-right outline-none border-b border-gray-600"
+                                                       :placeholder="stock.fetchedPrice || (stock.isUSD ? 'USD' : 'TWD')">
+                                            </div>
+                                        </td>
+                                        <td class="text-right font-mono text-white font-bold">{{ formatNumber(stock.marketValueTwd) }}</td>
+                                        <td class="text-right font-bold" :class="stock.returnRate >= 0 ? 'text-red-400' : 'text-green-400'">{{ stock.returnRate }}%</td>
+                                        <td class="text-right pr-6 font-mono font-bold relative">
+                                            <span :class="stock.isOverweight ? 'text-red-500' : 'text-blue-300'">
+                                                {{ formatPercent(stock.categoryWeight) }}
+                                            </span>
+                                            <i v-if="stock.isOverweight" class="fas fa-exclamation-triangle text-red-500 ml-1 animate-pulse" title="佔該類別 > 15%"></i>
+                                        </td>
+                                    </tr>
+                               </template>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div v-if="currentTab === 'advanced'" class="flex flex-col h-full space-y-4 animate-fade-in">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div class="glass p-5 rounded-2xl flex flex-col justify-center">
+                        <h4 class="text-white font-bold mb-3 border-l-4 border-blue-500 pl-3">1. 風險屬性分佈</h4>
+                        <div class="space-y-3">
+                             <div>
+                                 <div class="flex justify-between text-xs mb-1">
+                                     <span class="text-red-400 font-bold">高風險資產 (High)</span>
+                                     <span class="font-mono text-white">{{ formatNumber(riskTotals.High) }} ({{ formatPercent(riskTotals.High / totalStockValueTwd) }})</span>
+                                 </div>
+                                 <div class="bg-gray-700 h-1.5 rounded-full overflow-hidden"><div class="h-full bg-red-500" :style="{ width: ((riskTotals.High / totalStockValueTwd) * 100) + '%' }"></div></div>
+                             </div>
+                             <div>
+                                 <div class="flex justify-between text-xs mb-1">
+                                     <span class="text-green-400 font-bold">低風險資產 (Low)</span>
+                                     <span class="font-mono text-white">{{ formatNumber(riskTotals.Low) }} ({{ formatPercent(riskTotals.Low / totalStockValueTwd) }})</span>
+                                 </div>
+                                 <div class="bg-gray-700 h-1.5 rounded-full overflow-hidden"><div class="h-full bg-green-500" :style="{ width: ((riskTotals.Low / totalStockValueTwd) * 100) + '%' }"></div></div>
+                             </div>
+                          </div>
+                    </div>
+
+                    <div class="glass p-5 rounded-2xl flex flex-col justify-center">
+                        <h4 class="text-white font-bold mb-3 border-l-4 border-yellow-500 pl-3">2. 投資組合體質 (Weighted)</h4>
+                        <div class="grid grid-cols-2 gap-4 text-center">
+                            <div class="quant-card border-yellow-500/30">
+                                <div class="quant-label text-yellow-400">組合 Beta (βp)</div>
+                                <div class="quant-value text-white">{{ portfolioStats.beta }}</div>
+                                <div class="text-[10px] text-gray-500 mt-1">系統風險敏感度</div>
+                            </div>
+                            <div class="quant-card border-blue-500/30">
+                                <div class="quant-label text-blue-400">組合 StdDev (σp)</div>
+                                <div class="quant-value text-white">{{ portfolioStats.std }}%</div>
+                                <div class="text-[10px] text-gray-500 mt-1">總風險 (加權平均)</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="glass p-5 rounded-2xl flex flex-col justify-center">
+                        <h4 class="text-white font-bold mb-3 border-l-4 border-purple-500 pl-3">3. 市場參數 (SML/CML)</h4>
+                        <div class="flex flex-col gap-3">
+                            <div class="flex justify-between items-center text-xs">
+                                <span class="text-gray-400">無風險利率 (Rf):</span>
+                                <input v-model.number="riskParams.rf" class="w-16 bg-slate-800 text-center border rounded border-slate-600 text-white" step="0.1"> %
+                            </div>
+                            <div class="flex justify-between items-center text-xs">
+                                <span class="text-gray-400">市場預期報酬 (Rm):</span>
+                                <input v-model.number="riskParams.rm" class="w-16 bg-slate-800 text-center border rounded border-slate-600 text-white" step="0.1"> %
+                            </div>
+                            <div class="flex justify-between items-center text-xs">
+                                <span class="text-gray-400">市場標準差 (σm):</span>
+                                <input v-model.number="riskParams.sm" class="w-16 bg-slate-800 text-center border rounded border-slate-600 text-white" step="0.1"> %
+                            </div>
+                            <button @click="updateCharts" class="btn-purple text-xs py-1 rounded w-full mt-1">更新圖表</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 h-96">
+                    <div class="glass p-5 rounded-2xl flex flex-col relative">
+                        <h4 class="text-white font-bold mb-2">證券市場線 (SML) - Beta vs Return</h4>
+                        <div class="flex-1 relative"><canvas id="smlChart"></canvas></div>
+                    </div>
+                    <div class="glass p-5 rounded-2xl flex flex-col relative">
+                        <h4 class="text-white font-bold mb-2">資本市場線 (CML) - StdDev vs Return</h4>
+                        <div class="flex-1 relative"><canvas id="cmlChart"></canvas></div>
+                    </div>
+                </div>
+            </div>
+
+            <div v-if="currentTab === 'analytics'" class="flex flex-col h-full space-y-4 animate-fade-in">
+                
+                <div class="p-4 rounded-xl flex flex-wrap items-center justify-between gap-4 border transition-colors duration-500" :class="isSimMode ? 'glass-sim border-red-900/50' : 'glass border-white/5'">
+                    <div class="flex flex-col md:flex-row gap-6 w-full md:w-auto">
+                        <div>
+                             <h3 class="font-bold text-white text-lg flex items-center gap-2 mb-2 md:mb-0">
+                                <i class="fas fa-brain" :class="isSimMode ? 'text-red-500' : 'text-yellow-500'"></i> 量化風險分析
+                             </h3>
+                        </div>
+                        <div class="flex gap-4 items-end flex-wrap">
+                            <div class="flex flex-col">
+                                <label class="text-[10px] text-gray-400 font-bold mb-1">計算開始日</label>
+                                <input v-model="quantStartDate" type="date" class="bg-gray-800 text-white border border-gray-600 text-xs rounded px-2 py-1 focus:border-yellow-500 outline-none">
+                            </div>
+                             <div class="flex flex-col">
+                                <label class="text-[10px] text-gray-400 font-bold mb-1">數據頻率 (n)</label>
+                                <div class="bg-gray-800/50 text-gray-400 border border-gray-700 text-xs rounded px-3 py-1.5 cursor-not-allowed">
+                                    月資料 (Monthly √12)
+                                </div>
+                            </div>
+                            <div class="flex flex-col w-20">
+                                <label class="text-[10px] text-gray-400 font-bold mb-1">Rf (%)</label>
+                                <input v-model.number="riskParams.rf" type="number" step="0.1" class="bg-gray-800 text-white border border-gray-600 text-xs rounded px-2 py-1 text-center focus:border-yellow-500 outline-none">
+                            </div>
+                            <div class="flex flex-col w-20">
+                                <label class="text-[10px] text-gray-400 font-bold mb-1">Rm (%)</label>
+                                <input v-model.number="riskParams.rm" type="number" step="0.1" class="bg-gray-800 text-white border border-gray-600 text-xs rounded px-2 py-1 text-center focus:border-yellow-500 outline-none">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="flex gap-2 items-end">
+                        <div class="flex flex-col" v-if="!isSimMode">
+                            <label class="text-[10px] text-gray-400 font-bold mb-1 text-right">快照日期</label>
+                            <input v-model="snapshotDate" type="date" class="bg-gray-800 text-white border border-gray-600 text-xs rounded px-2 py-1.5 focus:border-yellow-500 outline-none">
+                        </div>
+                        <button v-if="!isSimMode" @click="snapshotToHistory" class="btn-gold px-3 py-2 rounded text-xs font-bold shadow hover:scale-105 transition flex items-center gap-1 h-[30px]" title="紀錄當下淨值與成本">
+                            <i class="fas fa-camera"></i> 快照
+                        </button>
+                        
+                        <button v-if="isSimMode" @click="generateMonthlyMockData" class="text-red-300 hover:text-white text-xs border border-red-500/50 px-3 py-2 rounded h-[30px]">重刷</button>
+                        <button v-if="!isSimMode" @click="showHistoryModal = true" class="text-blue-400 hover:text-white text-xs border border-blue-500/50 px-3 py-2 rounded h-[30px]">補登</button>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
+                    <div class="quant-card"><div class="quant-label text-blue-400">年化報酬 (TWR)</div><div class="quant-value text-white">{{ stats.annRet }}%</div></div>
+                    <div class="quant-card"><div class="quant-label text-gray-400">年化標準差 (StdDev)</div><div class="quant-value text-white">{{ stats.annVol }}%</div></div>
+                    <div class="quant-card"><div class="quant-label text-yellow-400">夏普 (Sharpe)</div><div class="quant-value text-white">{{ stats.sharpe }}</div></div>
+                    <div class="quant-card"><div class="quant-label text-yellow-400">索提諾 (Sortino)</div><div class="quant-value text-white">{{ stats.sortino }}</div></div>
+                    <div class="quant-card"><div class="quant-label text-yellow-400">崔娜 (Treynor)</div><div class="quant-value text-white">{{ stats.treynor }}</div></div>
+                    <div class="quant-card"><div class="quant-label text-green-400">Jensen's Alpha</div><div class="quant-value text-white">{{ stats.alpha }}%</div></div>
+                    <div class="quant-card"><div class="quant-label text-purple-400">Beta (β)</div><div class="quant-value text-white">{{ riskParams.beta }}</div></div>
+                    <div class="quant-card"><div class="quant-label text-red-400">VaR (95%)</div><div class="quant-value text-white">{{ stats.var95 }}%</div></div>
+                    <div class="quant-card bg-white/5 border-yellow-400/30"><div class="quant-label text-yellow-400">偏度 (Skewness)</div><div class="quant-value text-white">{{ stats.skew }}</div></div>
+                    <div class="quant-card bg-white/5 border-yellow-400/30"><div class="quant-label text-yellow-400">峭度 (Kurtosis)</div><div class="quant-value text-white">{{ stats.kurt }}</div></div>
+                </div>
+
+                 <div class="flex-1 glass rounded-xl overflow-hidden flex flex-col">
+                    <div class="overflow-auto flex-1">
+                        <table class="w-full text-left whitespace-nowrap">
+                            <thead class="sticky top-0 bg-[#0f172a] text-xs text-gray-400 uppercase font-semibold">
+                               <tr><th class="p-3 pl-6">日期</th><th class="p-3 text-right">總資產 (NAV)</th><th class="p-3 text-right">總成本 (Cost)</th><th class="p-3 text-right">週期報酬 (Return)</th><th class="p-3 text-center" v-if="!isSimMode">動作</th></tr>
+                            </thead>
+                            <tbody class="text-sm divide-y divide-white/5">
+                                <tr v-for="(h, idx) in enrichedHistory" :key="h.date" class="hover:bg-white/5">
+                                    <td class="p-3 pl-6 font-mono text-blue-300">{{ h.date }}</td>
+                                    <td class="p-3 text-right font-mono text-white">{{ formatNumber(h.assets) }}</td>
+                                    <td class="p-3 text-right font-mono text-gray-500">{{ formatNumber(h.cost) }}</td>
+                                    <td class="p-3 text-right font-mono" :class="h.dailyReturn >= 0 ? 'text-red-400' : 'text-green-400'">{{ h.dailyReturn ? (h.dailyReturn * 100).toFixed(2) + '%' : '-' }}</td>
+                                    <td class="p-3 text-center" v-if="!isSimMode"><button @click="removeHistoryByDate(h.date)" class="text-gray-600 hover:text-red-500"><i class="fas fa-trash"></i></button></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                 </div>
+            </div>
+
+            <div v-if="currentTab === 'ledger'" class="flex flex-col md:flex-row gap-6 h-full max-h-[85vh]">
+                 <div class="w-full md:w-80 glass p-5 rounded-xl h-fit space-y-4">
+                    <h3 class="font-bold text-white text-lg border-b border-gray-700 pb-2">新增交易</h3>
+                    <div><label class="text-xs text-gray-400 mb-1 block">1. 資產類別</label><div class="grid grid-cols-2 gap-2"><button @click="txForm.category='美股'" :class="txForm.category==='美股'?'bg-yellow-600 text-black font-bold':'bg-gray-700 text-gray-400'" class="p-2 rounded text-xs transition">美股</button><button @click="txForm.category='台股'" :class="txForm.category==='台股'?'bg-blue-600 text-white':'bg-gray-700 text-gray-400'" class="p-2 rounded text-xs transition">台股</button><button @click="txForm.category='基金'" :class="txForm.category==='基金'?'bg-green-600 text-white':'bg-gray-700 text-gray-400'" class="p-2 rounded text-xs transition">基金</button><button @click="txForm.category='加密貨幣'" :class="txForm.category==='加密貨幣'?'bg-purple-600 text-white':'bg-gray-700 text-gray-400'" class="p-2 rounded text-xs transition">加密貨幣</button></div></div>
+                    <div><label class="text-xs text-gray-400 mb-1 block">2. 交易內容 (TWD)</label><div class="grid grid-cols-2 gap-2 mb-2"><input v-model="txForm.date" type="date" class="input-dark p-2 rounded text-xs col-span-2"><select v-model="txForm.type" class="input-dark p-2 rounded text-xs col-span-2"><option value="Buy">買入 (Buy)</option><option value="Sell">賣出 (Sell)</option></select></div><input v-model="txForm.ticker" placeholder="代號 / 名稱 (如 AAPL)" class="w-full input-dark p-2 rounded text-xs uppercase mb-2"><div class="grid grid-cols-2 gap-2 mb-2"><div><label class="text-[10px] text-gray-500 block">成交單價 (TWD)</label><input v-model.number="txForm.price" type="number" placeholder="台幣價格" class="w-full input-dark p-2 rounded text-xs"></div><div><label class="text-[10px] text-gray-500 block">數量</label><input v-model.number="txForm.shares" type="number" placeholder="股數" class="w-full input-dark p-2 rounded text-xs"></div></div><div class="text-xs text-right text-gray-400 font-mono">總金額 (TWD): <span class="text-white font-bold">{{ formatNumber((txForm.price || 0) * (txForm.shares || 0)) }}</span></div></div>
+                    <button @click="addTransaction" class="w-full btn-purple text-white rounded-lg font-bold text-sm py-3 shadow-lg">確認送出</button>
+                 </div>
+                 <div class="flex-1 glass rounded-xl overflow-hidden flex flex-col">
+                    <div class="p-4 bg-gray-800/50 border-b border-gray-700">
+                        <h3 class="font-bold text-white">交易流水帳 (TWD)</h3>
+                    </div>
+                    <div class="overflow-auto flex-1">
+                        <table class="w-full text-left">
+                            <thead class="sticky top-0 bg-[#0f172a] text-xs text-gray-400 uppercase font-semibold"><tr><th class="p-3">日期</th><th class="p-3">類別</th><th class="p-3">名稱</th><th class="p-3 text-right">現金流 (TWD)</th><th class="p-3"></th></tr></thead>
+                            <tbody class="text-sm divide-y divide-white/5">
+                                <tr v-for="(tx, idx) in reversedTransactions" :key="idx" class="hover:bg-white/5">
+                                    <td class="p-3 text-gray-400">{{ tx.date }}</td>
+                                    <td class="p-3 font-bold" :class="getTypeColor(tx.type)">{{ tx.type }}</td>
+                                    <td class="p-3 text-white">{{ tx.ticker || '-' }}</td>
+                                    <td class="p-3 text-right font-mono text-white">{{ formatNumber(tx.totalCashFlow) }}</td>
+                                    <td class="p-3 text-center">
+                                        <button @click="removeTransaction(tx)" class="text-gray-600 hover:text-red-500 transition-colors">
+                                            <i class="fas fa-times"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                 </div>
+            </div>
+
+            <div v-if="showHistoryModal" class="fixed inset-0 bg-black/90 flex items-center justify-center z-[100]"><div class="glass p-6 rounded-xl w-full max-w-lg"><h3 class="text-lg font-bold text-white mb-4">補登資料</h3><div class="space-y-3 mb-6"><div class="flex gap-2"><input v-model="historyForm.date" type="date" class="input-dark p-2 rounded flex-1"><input v-model.number="historyForm.assets" type="number" placeholder="NAV" class="input-dark p-2 rounded flex-1"><input v-model.number="historyForm.cost" type="number" placeholder="Cost" class="input-dark p-2 rounded flex-1"></div><button @click="addHistoryRecord" class="w-full btn-gold text-black py-2 rounded font-bold">新增</button></div><button @click="showHistoryModal=false" class="w-full bg-gray-700 py-2 rounded text-white">關閉</button></div></div>
+
+       </div>
+    </main>
+</div>
+
+<script>
+const { createApp, ref, computed, onMounted, watch } = Vue;
+
+createApp({
+    setup() {
+        const currentTab = ref('summary');
+        const showHistoryModal = ref(false);
+        const isUpdating = ref(false);
+        const isSimMode = ref(false);
+        const lastUpdate = ref(null);
+        
+        const exchangeRate = ref(parseFloat(localStorage.getItem('exchangeRate')) || 32.5);
+        const sheetUrl = ref(localStorage.getItem('sheetUrl') || '');
+
+        watch(exchangeRate, (val) => localStorage.setItem('exchangeRate', val));
+        watch(sheetUrl, (val) => localStorage.setItem('sheetUrl', val));
+
+        const riskParams = ref({ rf: 1.5, beta: 1.0, rm: 10.0, sm: 15.0 });
+        const quantStartDate = ref(''); 
+        // Force Monthly data frequency as requested
+        const dataFrequency = ref('Monthly'); 
+        const snapshotDate = ref(new Date().toISOString().split('T')[0]); 
+
+        const transactions = ref(JSON.parse(localStorage.getItem('ledgerData') || '[]'));
+        const realHistoryData = ref(JSON.parse(localStorage.getItem('historyData') || '[]'));
+        const mockHistoryData = ref([]);
+        const priceMap = ref(JSON.parse(localStorage.getItem('priceMap') || '{}'));
+        const stockMeta = ref(JSON.parse(localStorage.getItem('stockMeta') || '{}'));
+        
+        const txForm = ref({ date: new Date().toISOString().split('T')[0], type: 'Buy', category: '美股', ticker: '', price: null, shares: null });
+        const historyForm = ref({ date: new Date().toISOString().split('T')[0], assets: null, cost: null });
+
+        const displayHistory = computed(() => isSimMode.value ? mockHistoryData.value : realHistoryData.value);
+
+        watch(displayHistory, (newVal) => {
+            if (newVal.length > 0 && !quantStartDate.value) {
+                const sorted = [...newVal].sort((a,b) => new Date(a.date) - new Date(b.date));
+                quantStartDate.value = sorted[0].date;
+            }
+        }, { immediate: true });
+
+        function toggleSimMode() {
+            isSimMode.value = !isSimMode.value;
+            if (isSimMode.value && mockHistoryData.value.length === 0) generateMonthlyMockData();
+            updateCharts();
+        }
+
+        function updateMeta(stock) {
+            if(stock.ticker) {
+                stockMeta.value[stock.ticker] = {
+                    risk: stock.riskLevel,
+                    beta: stock.beta,
+                    std: stock.stdDev
+                };
+               localStorage.setItem('stockMeta', JSON.stringify(stockMeta.value));
+            }
+        }
+
+        async function fetchPrices() {
+            if (!sheetUrl.value) { alert('請輸入 Google Sheet 網址'); return; }
+            let sheetId = null; let gid = '0';
+            const matchId = sheetUrl.value.match(/\/d\/([a-zA-Z0-9-_]+)/);
+            const matchGid = sheetUrl.value.match(/[#&?]gid=([0-9]+)/);
+            if (matchId && matchId[1]) sheetId = matchId[1]; else { alert('網址錯誤'); return; }
+            if (matchGid && matchGid[1]) gid = matchGid[1];
+            isUpdating.value = true;
+            const gvizUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&gid=${gid}`;
+            const processCSV = (csvText) => {
+                Papa.parse(csvText, {
+                    header: false,
+                    complete: (results) => {
+                        let count = 0;
+                        results.data.forEach(row => {
+                            if (row.length >= 2) {
+                                const t = row[0]?.toString().toUpperCase().trim();
+                                const p = parseFloat(row[1]);
+                                if (t && !isNaN(p)) { 
+                                   priceMap.value[t] = p; 
+                                   if(t.includes(':')) { const parts = t.split(':'); if(parts.length > 1) priceMap.value[parts[1].trim()] = p; }
+                                   count++; 
+                                }
+                            }
+                        });
+                        localStorage.setItem('priceMap', JSON.stringify(priceMap.value));
+                        lastUpdate.value = new Date().toLocaleTimeString();
+                        isUpdating.value = false;
+                        updateCharts();
+                        alert(`成功更新 ${count} 筆。`);
+                    }
+                });
+            };
+            try {
+                const res = await fetch(gvizUrl); if(!res.ok) throw new Error('D-Fail'); processCSV(await res.text());
+            } catch (e1) {
+                try {
+                    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(gvizUrl)}&timestamp=${Date.now()}`;
+                    const resP = await fetch(proxyUrl); if(!resP.ok) throw new Error('P-Fail'); processCSV(await resP.text());
+                } catch (e2) { isUpdating.value = false; alert('更新失敗'); }
+            }
+        }
+
+        const holdingsFlat = computed(() => {
+            const map = {};
+            transactions.value.forEach(tx => {
+                if(!tx.ticker) return;
+                const t = tx.ticker.toUpperCase();
+                if(!map[t]) map[t] = { ticker: t, category: tx.category || '台股', shares: 0, totalCostTwd: 0 };
+                if(tx.type === 'Buy') { map[t].shares += tx.shares; map[t].totalCostTwd += Math.abs(tx.totalCashFlow); }
+                else if(tx.type === 'Sell') { 
+                    const avgCost = map[t].shares ? map[t].totalCostTwd / map[t].shares : 0; 
+                    map[t].shares -= tx.shares; map[t].totalCostTwd -= avgCost * tx.shares; 
+                }
+            });
+            return Object.values(map).filter(h => h.shares > 0.0001);
+        });
+
+        const groupedHoldings = computed(() => {
+            const groups = {};
+            holdingsFlat.value.forEach(h => {
+                const rawPrice = priceMap.value[h.ticker];
+                const isUSD = (h.category === '美股');
+                const effectiveNativePrice = h.manualPrice || rawPrice || (h.totalCostTwd / h.shares / (isUSD ? exchangeRate.value : 1));
+                const currentPriceTwd = effectiveNativePrice * (isUSD ? exchangeRate.value : 1);
+                const mvTwd = h.shares * currentPriceTwd;
+
+                if (!groups[h.category]) groups[h.category] = { totalValue: 0, items: [] };
+                
+                const meta = stockMeta.value[h.ticker] || {};
+                
+                const item = { 
+                    ...h, isUSD, 
+                    riskLevel: meta.risk || 'High',
+                    beta: meta.beta || 1.0,
+                    stdDev: meta.std || 20.0,
+                    fetchedPrice: rawPrice,
+                    avgCostTwd: h.totalCostTwd / h.shares, 
+                    currentPriceTwd: currentPriceTwd,
+                    marketValueTwd: mvTwd, 
+                    unrealizedPLTwd: mvTwd - h.totalCostTwd, 
+                    returnRate: h.totalCostTwd ? (((mvTwd - h.totalCostTwd)/h.totalCostTwd)*100).toFixed(2) : 0 
+                };
+                
+               groups[h.category].items.push(item);
+               groups[h.category].totalValue += mvTwd;
+            });
+
+            for (const cat in groups) {
+                const total = groups[cat].totalValue;
+                groups[cat].items.forEach(item => {
+                    item.categoryWeight = total > 0 ? (item.marketValueTwd / total) : 0;
+                    item.isOverweight = item.categoryWeight > 0.15; 
+                });
+                groups[cat].items.sort((a,b) => b.marketValueTwd - a.marketValueTwd);
+            }
+            return groups;
+        });
+
+        const categoryTotals = computed(() => {
+            const totals = {};
+            for(const cat in groupedHoldings.value) totals[cat] = groupedHoldings.value[cat].totalValue;
+            return totals;
+        });
+
+        const riskTotals = computed(() => {
+            let high = 0; let low = 0;
+            for(const cat in groupedHoldings.value) {
+               groupedHoldings.value[cat].items.forEach(item => {
+                    if(item.riskLevel === 'Low') low += item.marketValueTwd; else high += item.marketValueTwd;
+                });
+            }
+            return { High: high, Low: low };
+        });
+
+        const totalStockValueTwd = computed(() => Object.values(categoryTotals.value).reduce((a,b)=>a+b,0));
+        
+        const portfolioStats = computed(() => {
+            let totalBeta = 0;
+            let totalStd = 0;
+            const totalVal = totalStockValueTwd.value;
+            if(totalVal === 0) return { beta: 0, std: 0 };
+
+            for(const cat in groupedHoldings.value) {
+               groupedHoldings.value[cat].items.forEach(item => {
+                    const weight = item.marketValueTwd / totalVal;
+                    totalBeta += weight * item.beta;
+                    totalStd += weight * item.stdDev;
+                });
+            }
+            return { beta: totalBeta.toFixed(2), std: totalStd.toFixed(2) };
+        });
+
+        watch(portfolioStats, (newVal) => {
+             if(newVal.beta && Math.abs(riskParams.value.beta - 1.0) < 0.01) {
+                 riskParams.value.beta = parseFloat(newVal.beta);
+             }
+        });
+
+        const totalStockCostTwd = computed(() => holdingsFlat.value.reduce((sum, h) => sum + h.totalCostTwd, 0));
+        const totalStockUnrealizedPL = computed(() => totalStockValueTwd.value - totalStockCostTwd.value);
+        const totalStockReturnRate = computed(() => totalStockCostTwd.value ? ((totalStockUnrealizedPL.value/totalStockCostTwd.value)*100).toFixed(2) : 0);
+        
+        // Use a computed property to serve the reversed list for display, but keep original for logic
+        const reversedTransactions = computed(() => [...transactions.value].reverse());
+
+        const filteredHistory = computed(() => {
+            const data = displayHistory.value;
+            if(!quantStartDate.value) return data;
+            return data.filter(h => new Date(h.date) >= new Date(quantStartDate.value));
+        });
+
+        const enrichedHistory = computed(() => {
+            const sorted = [...filteredHistory.value].sort((a,b) => new Date(a.date) - new Date(b.date));
+            return sorted.map((item, index) => {
+                let dailyReturn = null;
+                if (index > 0) {
+                    const prev = sorted[index - 1];
+                    const netFlow = item.cost - prev.cost;
+                    if (prev.assets > 0) dailyReturn = (item.assets - prev.assets - netFlow) / prev.assets;
+                }
+                return { ...item, dailyReturn };
+            }).reverse();
+        });
+
+        const stats = computed(() => {
+             const empty = { annRet:'-', annVol:'-', sharpe:'-', sortino:'-', treynor:'-', alpha:'-', var95:'-', skew:'-', kurt:'-' };
+             const h = filteredHistory.value;
+             if (h.length < 3) return empty;
+
+             const sorted = [...h].sort((a,b) => new Date(a.date) - new Date(b.date));
+             const returns = [];
+             
+             for(let i=1; i<sorted.length; i++) {
+                 const prev = sorted[i-1];
+                 const curr = sorted[i];
+                 const netFlow = curr.cost - prev.cost;
+                 if (prev.assets > 0) {
+                     returns.push((curr.assets - prev.assets - netFlow) / prev.assets);
+                 }
+             }
+             if (returns.length < 2) return empty;
+
+             const cumTwr = returns.reduce((acc, r) => acc * (1 + r), 1) - 1;
+             // Hardcoded factor for Monthly data as requested
+             const factor = Math.sqrt(12);
+             
+             // Approximate years based on monthly data points
+             const years = returns.length / 12;
+             const annRet = years > 0 ? (Math.pow(1 + cumTwr, 1 / years) - 1) : 0;
+
+             const avgR = returns.reduce((a,b)=>a+b,0)/returns.length;
+             const variance = returns.reduce((a,b) => a + Math.pow(b-avgR, 2), 0) / (returns.length - 1);
+             const stdSample = Math.sqrt(variance);
+             const annVol = stdSample * factor;
+
+             const rf = riskParams.value.rf / 100;
+             const rm = riskParams.value.rm / 100;
+             const beta = riskParams.value.beta || 1;
+
+             const sharpe = annVol > 0 ? (annRet - rf) / annVol : 0;
+             const treynor = beta !== 0 ? (annRet - rf) / beta : 0;
+
+             const downsideReturns = returns.filter(r => r < 0);
+             let downsideVar = 0;
+             if(downsideReturns.length > 0) {
+                 downsideVar = downsideReturns.reduce((a,b) => a + Math.pow(b, 2), 0) / returns.length;
+             }
+             const downsideDev = Math.sqrt(downsideVar) * factor; 
+             const sortino = downsideDev > 0 ? (annRet - rf) / downsideDev : 0;
+
+             const expectedRet = rf + beta * (rm - rf);
+             const alpha = annRet - expectedRet;
+
+             const sortedReturns = [...returns].sort((a,b) => a-b);
+             const idx95 = Math.floor(sortedReturns.length * 0.05);
+             const var95 = sortedReturns[idx95] || 0;
+
+             // --- SKEWNESS & KURTOSIS CALCULATION (Population) ---
+             const n = returns.length;
+             const stdPop = Math.sqrt(returns.reduce((a,b)=>a+Math.pow(b-avgR, 2),0)/n);
+             
+             let sumCubed = 0;
+             let sumQuart = 0;
+             returns.forEach(r => {
+                 sumCubed += Math.pow(r - avgR, 3);
+                 sumQuart += Math.pow(r - avgR, 4);
+             });
+
+             const skewness = (sumCubed / n) / Math.pow(stdPop, 3);
+             const kurtosis = ((sumQuart / n) / Math.pow(stdPop, 4)) - 3; // Excess Kurtosis
+
+             return { 
+                 annRet: (annRet*100).toFixed(2), 
+                 annVol: (annVol*100).toFixed(2), 
+                 sharpe: sharpe.toFixed(2), 
+                 sortino: sortino.toFixed(2), 
+                 treynor: (treynor * 100).toFixed(2),
+                 alpha: (alpha * 100).toFixed(2),
+                 var95: (var95 * 100).toFixed(2),
+                 skew: skewness.toFixed(2),
+                 kurt: kurtosis.toFixed(2)
+             }; 
+        });
+
+        // --- BASIC CRUD ---
+        function manualUpdate(stock) { if(stock.manualPrice) { priceMap.value[stock.ticker] = stock.manualPrice; localStorage.setItem('priceMap', JSON.stringify(priceMap.value)); } }
+        
+        // FIXED: Deletion Logic to find the actual object instead of relying on index
+        function removeTransaction(txToRemove) { 
+            if(confirm('確認刪除此筆交易?')) { 
+                const idx = transactions.value.indexOf(txToRemove);
+                if (idx > -1) {
+                    transactions.value.splice(idx, 1); 
+                    saveData(); 
+                    updateCharts(); 
+                }
+            } 
+        }
+        
+        function removeHistoryByDate(date) { if(confirm('Del?')) { realHistoryData.value = realHistoryData.value.filter(h=>h.date!==date); localStorage.setItem('historyData', JSON.stringify(realHistoryData.value)); updateCharts(); } }
+        function saveData() { localStorage.setItem('ledgerData', JSON.stringify(transactions.value)); }
+        function exportAll() { const data = { ledger: transactions.value, history: realHistoryData.value, stockMeta: stockMeta.value }; const link = document.createElement("a"); link.href = URL.createObjectURL(new Blob([JSON.stringify(data)], {type: "application/json"})); link.download = "backup.json"; link.click(); }
+        function importData(event) {
+            const file = event.target.files[0]; if (!file) return; const reader = new FileReader();
+            reader.onload = (e) => {
+                const data = JSON.parse(e.target.result);
+                transactions.value = data.ledger; realHistoryData.value = data.history; if(data.stockMeta) stockMeta.value = data.stockMeta;
+                saveData(); localStorage.setItem('historyData', JSON.stringify(realHistoryData.value)); localStorage.setItem('stockMeta', JSON.stringify(stockMeta.value)); updateCharts(); alert('匯入成功');
+            }; reader.readAsText(file);
+        }
+        
+        function addTransaction() { 
+            const { date, type, category, ticker, price, shares } = txForm.value; 
+            if(!date) return; 
+            
+            const finalFlow = (type === 'Buy' ? -1 : 1) * price * shares;
+
+            transactions.value.push({ 
+                date, type, category, 
+                ticker: ticker?.toUpperCase(), 
+                price, 
+                shares, 
+                totalCashFlow: finalFlow 
+            }); 
+            saveData(); 
+            txForm.value.ticker=''; 
+            updateCharts(); 
+        }
+
+        // --- SNAPSHOT & HISTORY ---
+        function snapshotToHistory() {
+            const date = snapshotDate.value || new Date().toISOString().split('T')[0];
+            const assets = Math.round(totalStockValueTwd.value);
+            const cost = Math.round(totalStockCostTwd.value);
+
+            const idx = realHistoryData.value.findIndex(h => h.date === date);
+            if (idx >= 0) {
+                if(confirm(`日期 (${date}) 已有紀錄，要覆蓋嗎？`)) {
+                    realHistoryData.value[idx] = { date, assets, cost };
+                } else return;
+            } else {
+                realHistoryData.value.push({ date, assets, cost });
+            }
+            
+            localStorage.setItem('historyData', JSON.stringify(realHistoryData.value));
+            updateCharts();
+            if(!quantStartDate.value) quantStartDate.value = date;
+        }
+
+        function addHistoryRecord() { const { date, assets, cost } = historyForm.value; realHistoryData.value.push({ date, assets, cost }); localStorage.setItem('historyData', JSON.stringify(realHistoryData.value)); updateCharts(); }
+        
+        function generateMonthlyMockData() { 
+             mockHistoryData.value = [];
+             let val = 1000000; let cost = 1000000;
+             for(let i=0; i<12; i++) {
+                 const date = `2024-${String(i+1).padStart(2,'0')}-01`;
+                 val = val * (1 + (Math.random()*0.1 - 0.03)); 
+                 if(i%3===0) { cost += 10000; val += 10000; } 
+                 mockHistoryData.value.push({ date, assets: Math.round(val), cost: Math.round(cost) });
+             }
+        }
+
+        function getTypeColor(type) { return type==='Buy'?'text-red-400':'text-green-400'; }
+        function getCategoryColorCode(cat) { return '#3b82f6'; }
+        function formatNumber(n) { return new Intl.NumberFormat('zh-TW', {maximumFractionDigits:0}).format(n||0); }
+        function formatPercent(n) { return ((n||0)*100).toFixed(1) + '%'; }
+
+        let chartSML, chartCML, chartAlloc, chartHist;
+
+        function initCharts() {
+            const allocCtx = document.getElementById('allocationChart');
+            const histCtx = document.getElementById('historyChart');
+            if(chartAlloc) chartAlloc.destroy(); 
+            if(chartHist) chartHist.destroy(); 
+            Chart.defaults.color = '#94a3b8'; Chart.defaults.borderColor = '#334155';
+            if(allocCtx) chartAlloc = new Chart(allocCtx, { type: 'doughnut', data: { labels: [], datasets: [{data:[]}] } });
+            if(histCtx) chartHist = new Chart(histCtx, { type: 'line', data: { labels: [], datasets: [{data:[]},{data:[]}] } });
+
+            const smlCtx = document.getElementById('smlChart');
+            const cmlCtx = document.getElementById('cmlChart');
+            if(chartSML) chartSML.destroy();
+            if(chartCML) chartCML.destroy();
+
+            if(smlCtx) chartSML = new Chart(smlCtx, {
+                type: 'scatter', data: { datasets: [] },
+                options: { 
+                    responsive: true, maintainAspectRatio: false,
+                    scales: { x: { title: {display:true, text:'Beta (β)'}, min: 0, max: 2 }, y: { title: {display:true, text:'Expected Return (%)'} } },
+                    plugins: { tooltip: { callbacks: { label: (ctx) => `${ctx.raw.name}: (${ctx.raw.x}, ${ctx.raw.y}%)` } } }
+                }
+            });
+
+            if(cmlCtx) chartCML = new Chart(cmlCtx, {
+                type: 'scatter', data: { datasets: [] },
+                options: { 
+                    responsive: true, maintainAspectRatio: false,
+                    scales: { x: { title: {display:true, text:'StdDev (σ)'}, min: 0 }, y: { title: {display:true, text:'Expected Return (%)'} } }
+                }
+            });
+        }
+
+        function updateCharts() {
+            requestAnimationFrame(() => {
+                if(!chartAlloc) initCharts();
+
+                if (currentTab.value === 'summary' && chartAlloc) {
+                    const cats = categoryTotals.value;
+                    chartAlloc.data.labels = Object.keys(cats); chartAlloc.data.datasets[0].data = Object.values(cats); 
+                   chartAlloc.data.datasets[0].backgroundColor = ['#f59e0b','#3b82f6','#10b981','#a855f7'];
+                    chartAlloc.update();
+                    
+                    const history = displayHistory.value; const sorted = [...history].sort((a,b)=>new Date(a.date)-new Date(b.date));
+                    if(chartHist) {
+                        chartHist.data.labels = sorted.map(h=>h.date);
+                       chartHist.data.datasets[0] = { label: 'NAV', data: sorted.map(h=>h.assets), borderColor: '#3b82f6', fill: true, backgroundColor: 'rgba(59,130,246,0.1)' };
+                       chartHist.data.datasets[1] = { label: 'Cost', data: sorted.map(h=>h.cost), borderColor: '#10b981', borderDash:[5,5] };
+                        chartHist.update();
+                    }
+                }
+
+                if (currentTab.value === 'advanced' && chartSML && chartCML) {
+                    const rf = riskParams.value.rf;
+                    const rm = riskParams.value.rm;
+                    const sm = riskParams.value.sm;
+                    
+                    const smlLine = [ {x:0, y:rf}, {x:2, y: rf + 2*(rm-rf)} ];
+                    
+                    const slope = (rm - rf) / sm;
+                    const maxX = sm * 2.5; 
+                    const cmlLine = [ 
+                        { x: 0, y: rf }, 
+                        { x: sm, y: rm }, 
+                        { x: maxX, y: rf + slope * maxX } 
+                    ];
+
+                    const portRet = parseFloat(stats.value.annRet) || 0;
+                    const portVol = parseFloat(stats.value.annVol) || 0;
+                    const portBeta = parseFloat(riskParams.value.beta) || 0;
+
+                    const portPoint = { x: portBeta, y: portRet, name: 'Portfolio' };
+                    const portPointCML = { x: portVol, y: portRet, name: 'Portfolio' };
+                    const marketPoint = { x: sm, y: rm, name: 'Market Index' };
+
+                    const assetPoints = [];
+                    for(const cat in groupedHoldings.value) {
+                        groupedHoldings.value[cat].items.forEach(i => {
+                            assetPoints.push({ x: i.beta, y: parseFloat(i.returnRate), name: i.ticker });
+                        });
+                    }
+
+                    chartSML.data.datasets = [
+                        { type: 'line', label: 'SML', data: smlLine, borderColor: '#94a3b8', borderWidth: 2, pointRadius: 0 },
+                        { type: 'scatter', label: 'Holdings', data: assetPoints, backgroundColor: '#f59e0b' },
+                        { type: 'scatter', label: 'Portfolio', data: [portPoint], backgroundColor: '#ef4444', pointRadius: 8 }
+                    ];
+                    chartSML.update();
+
+                    chartCML.data.datasets = [
+                        { type: 'line', label: 'CML', data: cmlLine, borderColor: '#94a3b8', borderWidth: 2, pointRadius: 0 },
+                        { type: 'scatter', label: 'Market', data: [marketPoint], backgroundColor: '#10b981', pointRadius: 6 },
+                        { type: 'scatter', label: 'Portfolio', data: [portPointCML], backgroundColor: '#ef4444', pointRadius: 8 }
+                    ];
+                    chartCML.update();
+                }
+            });
+        }
+        
+        onMounted(() => { setTimeout(updateCharts, 500); });
+        watch(currentTab, () => { setTimeout(initCharts, 100); setTimeout(updateCharts, 200); });
+        watch([exchangeRate, sheetUrl, isSimMode, riskParams, quantStartDate, dataFrequency], () => updateCharts(), {deep:true});
+
+        return { currentTab, showHistoryModal, isUpdating, isSimMode, toggleSimMode, transactions, groupedHoldings, categoryTotals, riskTotals, portfolioStats, totalStockValueTwd, totalStockCostTwd, totalStockUnrealizedPL, totalStockReturnRate, reversedTransactions, txForm, historyForm, riskParams, stats, exchangeRate, sheetUrl, addTransaction, addHistoryRecord, generateMonthlyMockData, removeTransaction, removeHistoryByDate, manualUpdate, updateMeta, fetchPrices, exportAll, importData, getTypeColor, getCategoryColorCode, formatNumber, formatPercent, lastUpdate, displayHistory, enrichedHistory, quantStartDate, dataFrequency, snapshotToHistory, snapshotDate };
+    }
+}).mount('#app');
+</script>
+</body>
+</html>
