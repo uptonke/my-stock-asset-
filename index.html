@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>股票紀錄 v17.0 (Cloud SaaS Edition)</title>
+    <title>股票紀錄 v17.1 (Cloud SaaS + Quant Pro)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -42,11 +42,16 @@
 
 <div id="app" class="h-full flex flex-col transition-colors duration-500" :class="isSimMode ? 'bg-[#1a0505]' : 'bg-[#0f172a]'">
     
+    <div v-if="!isAppReady" class="fixed inset-0 z-[999] bg-[#0f172a] flex flex-col items-center justify-center text-white">
+        <i class="fas fa-circle-notch fa-spin text-4xl text-yellow-500 mb-4"></i>
+        <p class="text-lg font-bold tracking-widest animate-pulse">連線同步中 (Syncing Data)...</p>
+    </div>
+
     <header class="z-50 flex-none h-16 px-6 flex items-center justify-between shadow-lg transition-colors duration-500" :class="isSimMode ? 'glass-sim' : 'glass'">
         <div class="flex items-center gap-6">
             <h1 class="font-bold text-xl tracking-wide flex items-center gap-2 text-white">
                 <i class="fas fa-chart-line text-yellow-500"></i> Stock Portfolio
-                <span v-if="!isSimMode" class="text-xs bg-yellow-600 px-2 py-0.5 rounded text-black font-bold">v17.0</span>
+                <span v-if="!isSimMode" class="text-xs bg-yellow-600 px-2 py-0.5 rounded text-black font-bold">v17.1</span>
                 <span v-else class="text-xs bg-red-600 px-2 py-0.5 rounded text-white font-bold animate-pulse">SIMULATION</span>
                 <i v-if="isDbSyncing" class="fas fa-cloud-upload-alt animate-bounce text-blue-400 text-sm ml-2" title="雲端同步中"></i>
             </h1>
@@ -179,28 +184,28 @@
                                     <tr v-for="stock in group.items" :key="stock.ticker" class="hover:bg-white/5">
                                         <td class="pl-6 font-bold text-white flex items-center gap-2">
                                             {{ stock.ticker }}
-                                            <span v-if="stock.isUSD" class="text-[9px] bg-gray-700 px-1 rounded text-gray-300">USD</span>
+                                           <span v-if="stock.isUSD" class="text-[9px] bg-gray-700 px-1 rounded text-gray-300">USD</span>
                                         </td>
                                         <td>
-                                            <select v-model="stock.riskLevel" @change="updateMeta(stock)" class="risk-select" :class="stock.riskLevel === 'Low' ? 'risk-low' : 'risk-high'">
-                                                 <option value="High">High</option><option value="Low">Low</option>
-                                            </select>
+                                           <select v-model="stock.riskLevel" @change="updateMeta(stock)" class="risk-select" :class="stock.riskLevel === 'Low' ? 'risk-low' : 'risk-high'">
+                                                <option value="High">High</option><option value="Low">Low</option>
+                                           </select>
                                         </td>
                                         <td>
-                                            <input v-model.number="stock.beta" @change="updateMeta(stock)" class="w-12 bg-transparent text-center border-b border-gray-600 focus:border-yellow-400 outline-none text-yellow-400" placeholder="1.0">
+                                           <input v-model.number="stock.beta" @change="updateMeta(stock)" class="w-12 bg-transparent text-center border-b border-gray-600 focus:border-yellow-400 outline-none text-yellow-400" placeholder="1.0">
                                         </td>
                                         <td>
-                                            <input v-model.number="stock.stdDev" @change="updateMeta(stock)" class="w-12 bg-transparent text-center border-b border-gray-600 focus:border-yellow-400 outline-none text-yellow-400" placeholder="20">
+                                           <input v-model.number="stock.stdDev" @change="updateMeta(stock)" class="w-12 bg-transparent text-center border-b border-gray-600 focus:border-yellow-400 outline-none text-yellow-400" placeholder="20">
                                         </td>
 
                                         <td class="text-right font-mono text-gray-300">{{ formatNumber(stock.shares) }}</td>
                                         <td class="text-right font-mono text-gray-400">{{ formatNumber(stock.avgCostTwd) }}</td>
                                         <td class="text-right font-mono font-bold text-yellow-400">
-                                            <div class="flex items-center justify-end gap-2">
-                                                 <input v-model.number="stock.manualPrice" @change="manualUpdate(stock)" 
-                                                        class="w-20 bg-transparent text-right outline-none border-b border-gray-600"
-                                                        :placeholder="stock.fetchedPrice || (stock.isUSD ? 'USD' : 'TWD')">
-                                            </div>
+                                           <div class="flex items-center justify-end gap-2">
+                                                <input v-model.number="stock.manualPrice" @change="manualUpdate(stock)" 
+                                                       class="w-20 bg-transparent text-right outline-none border-b border-gray-600"
+                                                       :placeholder="stock.fetchedPrice || (stock.isUSD ? 'USD' : 'TWD')">
+                                           </div>
                                         </td>
                                         <td class="text-right font-mono text-white font-bold">{{ formatNumber(stock.marketValueTwd) }}</td>
                                         <td class="text-right font-bold" :class="stock.returnRate >= 0 ? 'text-red-400' : 'text-green-400'">{{ stock.returnRate }}%</td>
@@ -237,7 +242,7 @@
                                  </div>
                                  <div class="bg-gray-700 h-1.5 rounded-full overflow-hidden"><div class="h-full bg-green-500" :style="{ width: ((riskTotals.Low / totalStockValueTwd) * 100) + '%' }"></div></div>
                              </div>
-                          </div>
+                         </div>
                     </div>
 
                     <div class="glass p-5 rounded-2xl flex flex-col justify-center">
@@ -324,8 +329,13 @@
                             <label class="text-[10px] text-gray-400 font-bold mb-1 text-right">快照日期</label>
                             <input v-model="snapshotDate" type="date" class="bg-gray-800 text-white border border-gray-600 text-xs rounded px-2 py-1.5 focus:border-yellow-500 outline-none">
                         </div>
+                        
                         <button v-if="!isSimMode" @click="snapshotToHistory" class="btn-gold px-3 py-2 rounded text-xs font-bold shadow hover:scale-105 transition flex items-center gap-1 h-[30px]" title="紀錄當下淨值與成本">
                             <i class="fas fa-camera"></i> 快照
+                        </button>
+                        
+                        <button @click="openMonteCarlo" class="bg-purple-600 hover:bg-purple-500 px-3 py-2 rounded text-xs text-white font-bold shadow transition flex items-center gap-1 h-[30px]">
+                            <i class="fas fa-random"></i> MC 最佳化
                         </button>
                         
                         <button v-if="isSimMode" @click="generateMonthlyMockData" class="text-red-300 hover:text-white text-xs border border-red-500/50 px-3 py-2 rounded h-[30px]">重刷</button>
@@ -336,9 +346,9 @@
                 <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
                     <div class="quant-card"><div class="quant-label text-blue-400">年化報酬 (TWR)</div><div class="quant-value text-white">{{ stats.annRet }}%</div></div>
                     <div class="quant-card"><div class="quant-label text-gray-400">年化標準差 (StdDev)</div><div class="quant-value text-white">{{ stats.annVol }}%</div></div>
-                    <div class="quant-card"><div class="quant-label text-yellow-400">夏普 (Sharpe)</div><div class="quant-value text-white">{{ stats.sharpe }}</div></div>
-                    <div class="quant-card"><div class="quant-label text-yellow-400">索提諾 (Sortino)</div><div class="quant-value text-white">{{ stats.sortino }}</div></div>
-                    <div class="quant-card"><div class="quant-label text-yellow-400">崔娜 (Treynor)</div><div class="quant-value text-white">{{ stats.treynor }}</div></div>
+                    <div class="quant-card"><div class="quant-label text-yellow-400">夏普 (Sharpe)</div><div class="quant-value text-white">{{ stats.sharpe }}%</div></div>
+                    <div class="quant-card"><div class="quant-label text-yellow-400">索提諾 (Sortino)</div><div class="quant-value text-white">{{ stats.sortino }}%</div></div>
+                    <div class="quant-card"><div class="quant-label text-yellow-400">崔娜 (Treynor)</div><div class="quant-value text-white">{{ stats.treynor }}%</div></div>
                     <div class="quant-card"><div class="quant-label text-green-400">Jensen's Alpha</div><div class="quant-value text-white">{{ stats.alpha }}%</div></div>
                     <div class="quant-card"><div class="quant-label text-purple-400">Beta (β)</div><div class="quant-value text-white">{{ riskParams.beta }}</div></div>
                     <div class="quant-card"><div class="quant-label text-red-400">VaR (95%)</div><div class="quant-value text-white">{{ stats.var95 }}%</div></div>
@@ -364,6 +374,11 @@
                         </table>
                     </div>
                  </div>
+
+                 <div class="glass p-5 rounded-xl flex flex-col relative mt-4">
+                    <h4 class="text-white font-bold mb-2"><i class="fas fa-history text-blue-400 mr-2"></i>Rolling 12-Period (Sharpe & Volatility)</h4>
+                    <div class="h-64 relative"><canvas id="rollingChart"></canvas></div>
+                </div>
             </div>
 
             <div v-if="currentTab === 'ledger'" class="flex flex-col md:flex-row gap-6 h-full max-h-[85vh]">
@@ -400,20 +415,54 @@
 
             <div v-if="showHistoryModal" class="fixed inset-0 bg-black/90 flex items-center justify-center z-[100]"><div class="glass p-6 rounded-xl w-full max-w-lg"><h3 class="text-lg font-bold text-white mb-4">補登資料</h3><div class="space-y-3 mb-6"><div class="flex gap-2"><input v-model="historyForm.date" type="date" class="input-dark p-2 rounded flex-1"><input v-model.number="historyForm.assets" type="number" placeholder="NAV" class="input-dark p-2 rounded flex-1"><input v-model.number="historyForm.cost" type="number" placeholder="Cost" class="input-dark p-2 rounded flex-1"></div><button @click="addHistoryRecord" class="w-full btn-gold text-black py-2 rounded font-bold">新增</button></div><button @click="showHistoryModal=false" class="w-full bg-gray-700 py-2 rounded text-white">關閉</button></div></div>
 
+            <div v-if="showMCModal" class="fixed inset-0 bg-black/95 flex items-center justify-center z-[100]">
+                <div class="glass p-6 rounded-xl w-full max-w-5xl h-[85vh] flex flex-col">
+                    <div class="flex justify-between items-center mb-4 border-b border-gray-700 pb-3">
+                        <h3 class="text-xl font-bold text-white flex items-center gap-2">
+                            <i class="fas fa-random text-purple-400"></i> Monte Carlo 最適化 (N=5000, SIM 模型)
+                        </h3>
+                        <button @click="showMCModal=false" class="text-gray-400 hover:text-white"><i class="fas fa-times text-xl"></i></button>
+                    </div>
+                    <div class="flex-1 flex gap-4 overflow-hidden">
+                        <div class="flex-1 bg-gray-900 rounded-xl relative p-4 border border-gray-700">
+                            <canvas id="mcChart"></canvas>
+                        </div>
+                        <div class="w-64 bg-gray-800/50 rounded-xl p-4 overflow-y-auto border border-gray-700">
+                            <h4 class="text-yellow-400 font-bold mb-3 text-sm">最佳夏普權重</h4>
+                            <div v-if="mcOptimal" class="space-y-2">
+                                <div class="flex justify-between text-xs text-gray-300 border-b border-gray-600 pb-1"><span>預期報酬</span><span class="font-mono text-green-400">{{ mcOptimal.ret }}%</span></div>
+                                <div class="flex justify-between text-xs text-gray-300 border-b border-gray-600 pb-1"><span>標準差</span><span class="font-mono text-red-400">{{ mcOptimal.vol }}%</span></div>
+                                <div class="flex justify-between text-xs text-gray-300 border-b border-gray-600 pb-3"><span>Sharpe</span><span class="font-mono text-yellow-400 font-bold">{{ mcOptimal.sharpe }}</span></div>
+                                <h5 class="text-[10px] text-gray-400 uppercase tracking-wider mb-1 mt-2">標的配置</h5>
+                                <div v-for="(w, ticker) in mcOptimal.weights" :key="ticker" class="flex justify-between text-xs">
+                                    <span class="text-white">{{ ticker }}</span>
+                                    <span class="font-mono text-blue-300">{{ w }}%</span>
+                                </div>
+                            </div>
+                            <div v-else class="text-xs text-gray-500 flex justify-center items-center h-32">
+                                <i class="fas fa-spinner fa-spin mr-2"></i> 計算中...
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
        </div>
     </main>
 </div>
 
 <script>
-const { createApp, ref, computed, onMounted, watch } = Vue;
+const { createApp, ref, computed, onMounted, watch, nextTick } = Vue; // 👉 加上 nextTick
 
 createApp({
     setup() {
+        const isAppReady = ref(false); 
+        const showMCModal = ref(false); 
+        const mcOptimal = ref(null); 
         const currentTab = ref('summary');
         
-        // --- v17.0 雲端管線設定 ---
         const gasApiUrl = 'https://script.google.com/macros/s/AKfycbwdQa4NWGh8nJ-pmVKWqGdwmZcWxGQvFAtlxbfQyJOWyB9ObIGNvC_rvTjf7tPupf9a/exec'; 
-        const isDbSyncing = ref(false); // 雲端同步狀態燈
+        const isDbSyncing = ref(false); 
 
         const showHistoryModal = ref(false);
         const isUpdating = ref(false);
@@ -431,26 +480,22 @@ createApp({
         const dataFrequency = ref('Monthly'); 
         const snapshotDate = ref(new Date().toISOString().split('T')[0]); 
 
-        // --- 變數初始化 (保留舊有的 mock 和 priceMap) ---
         const transactions = ref([]);
         const realHistoryData = ref([]);
         const mockHistoryData = ref([]);
         const priceMap = ref(JSON.parse(localStorage.getItem('priceMap') || '{}'));
         const stockMeta = ref({});
 
-        // 🚀 v17.0 雲端讀取引擎 (GET)
         async function loadDataFromCloud() {
             isDbSyncing.value = true;
             try {
                 const res = await fetch(gasApiUrl);
                 const data = await res.json();
                 
-                // 將雲端資料覆蓋到前端，如果雲端是空的，就讀取本機快取 (防呆機制)
                 transactions.value = JSON.parse(data.ledgerData === '[]' ? (localStorage.getItem('ledgerData') || '[]') : data.ledgerData);
                 realHistoryData.value = JSON.parse(data.historyData === '[]' ? (localStorage.getItem('historyData') || '[]') : data.historyData);
                 stockMeta.value = JSON.parse(data.stockMeta === '{}' ? (localStorage.getItem('stockMeta') || '{}') : data.stockMeta);
                 
-                // 更新本機快取
                 localStorage.setItem('ledgerData', JSON.stringify(transactions.value));
                 localStorage.setItem('historyData', JSON.stringify(realHistoryData.value));
                 localStorage.setItem('stockMeta', JSON.stringify(stockMeta.value));
@@ -461,6 +506,7 @@ createApp({
                 stockMeta.value = JSON.parse(localStorage.getItem('stockMeta') || '{}');
             } finally {
                 isDbSyncing.value = false;
+                isAppReady.value = true; // 👉 讀取完畢解鎖 UI
                 updateCharts();
             }
         }
@@ -490,7 +536,7 @@ createApp({
                     beta: stock.beta,
                     std: stock.stdDev
                 };
-                saveData(); // Meta 變更也要上雲
+                saveData(); 
             }
         }
 
@@ -508,7 +554,7 @@ createApp({
                     header: false,
                     complete: (results) => {
                         let count = 0;
-                        results.data.forEach(row => {
+                       results.data.forEach(row => {
                             if (row.length >= 2) {
                                 const t = row[0]?.toString().toUpperCase().trim();
                                 const p = parseFloat(row[1]);
@@ -519,7 +565,7 @@ createApp({
                                 }
                             }
                         });
-                        localStorage.setItem('priceMap', JSON.stringify(priceMap.value));
+                       localStorage.setItem('priceMap', JSON.stringify(priceMap.value));
                         lastUpdate.value = new Date().toLocaleTimeString();
                         isUpdating.value = false;
                         updateCharts();
@@ -645,14 +691,16 @@ createApp({
             return data.filter(h => new Date(h.date) >= new Date(quantStartDate.value));
         });
 
-        const enrichedHistory = computed(() => {
+       const enrichedHistory = computed(() => {
             const sorted = [...filteredHistory.value].sort((a,b) => new Date(a.date) - new Date(b.date));
             return sorted.map((item, index) => {
                 let dailyReturn = null;
                 if (index > 0) {
                     const prev = sorted[index - 1];
                     const netFlow = item.cost - prev.cost;
-                    if (prev.assets > 0) dailyReturn = (item.assets - prev.assets - netFlow) / prev.assets;
+                    // 👉 Modified Dietz (加權現金流量)
+                    const denom = prev.assets + (netFlow / 2);
+                    if (denom > 0) dailyReturn = (item.assets - prev.assets - netFlow) / denom;
                 }
                 return { ...item, dailyReturn };
             }).reverse();
@@ -670,8 +718,10 @@ createApp({
                  const prev = sorted[i-1];
                  const curr = sorted[i];
                  const netFlow = curr.cost - prev.cost;
-                 if (prev.assets > 0) {
-                     returns.push((curr.assets - prev.assets - netFlow) / prev.assets);
+                 // 👉 Modified Dietz (加權現金流量)
+                 const denom = prev.assets + (netFlow / 2); 
+                 if (denom > 0) {
+                     returns.push((curr.assets - prev.assets - netFlow) / denom);
                  }
              }
              if (returns.length < 2) return empty;
@@ -757,29 +807,36 @@ createApp({
             } 
         }
 
-        // 🚀 v17.0 雲端同步引擎
-        async function saveData() { 
+        // 🚀 v17.1 雲端同步引擎 (Debounce 防護)
+        let syncTimer = null;
+        function saveData() { 
+            // 1. 本地即時寫入
             localStorage.setItem('ledgerData', JSON.stringify(transactions.value)); 
             localStorage.setItem('historyData', JSON.stringify(realHistoryData.value));
             localStorage.setItem('stockMeta', JSON.stringify(stockMeta.value));
 
+            // 2. Debounce 防止過度呼叫 GAS API
             isDbSyncing.value = true;
-            try {
-                const payload = {
-                    ledgerData: JSON.stringify(transactions.value),
-                    historyData: JSON.stringify(realHistoryData.value),
-                    stockMeta: JSON.stringify(stockMeta.value)
-                };
-                await fetch(gasApiUrl, {
-                    method: 'POST',
-                    body: JSON.stringify(payload) 
-                });
-                console.log("雲端同步成功 (Sync Complete)");
-            } catch (e) {
-                console.error("雲端同步失敗", e);
-            } finally {
-                isDbSyncing.value = false;
-            }
+            if (syncTimer) clearTimeout(syncTimer);
+            
+            syncTimer = setTimeout(async () => {
+                try {
+                    const payload = {
+                        ledgerData: JSON.stringify(transactions.value),
+                        historyData: JSON.stringify(realHistoryData.value),
+                        stockMeta: JSON.stringify(stockMeta.value)
+                    };
+                    await fetch(gasApiUrl, {
+                        method: 'POST',
+                        body: JSON.stringify(payload) 
+                    });
+                    console.log("雲端同步成功 (Debounced Sync Complete)");
+                } catch (e) {
+                    console.error("雲端同步失敗", e);
+                } finally {
+                    isDbSyncing.value = false;
+                }
+            }, 1500); // 1.5 秒無動作才打 API
         }
 
         function exportAll() { const data = { ledger: transactions.value, history: realHistoryData.value, stockMeta: stockMeta.value }; const link = document.createElement("a"); link.href = URL.createObjectURL(new Blob([JSON.stringify(data)], {type: "application/json"})); link.download = "backup.json"; link.click(); }
@@ -843,12 +900,121 @@ createApp({
              }
         }
 
+        // 👉 Monte Carlo 引擎
+        function openMonteCarlo() {
+            showMCModal.value = true;
+            mcOptimal.value = null; // 狀態重置
+            nextTick(() => {
+                runMonteCarlo();
+            });
+        }
+
+        function runMonteCarlo() {
+            const ctx = document.getElementById('mcChart');
+            if(chartMC) chartMC.destroy();
+
+            // 準備資產特徵
+            const assets = [];
+            for (const cat in groupedHoldings.value) {
+                groupedHoldings.value[cat].items.forEach(item => {
+                    if(item.beta > 0 && item.stdDev > 0) assets.push(item);
+                });
+            }
+            if(assets.length === 0) {
+                alert("請先在「庫存」分頁填寫標的的 Beta 與 標準差 (不能為0)");
+                return;
+            }
+
+            const n_assets = assets.length;
+            const n_portfolios = 5000;
+            const rm = riskParams.value.rm / 100;
+            const rf = riskParams.value.rf / 100;
+            const sm = riskParams.value.sm / 100;
+
+            const mcPoints = [];
+            let bestSharpe = -999;
+            let bestPort = null;
+
+            for (let p = 0; p < n_portfolios; p++) {
+                let weights = Array.from({length: n_assets}, () => Math.random());
+                const sumW = weights.reduce((a,b)=>a+b, 0);
+                weights = weights.map(w => w / sumW);
+
+                let p_ret = 0;
+                let p_beta = 0;
+                weights.forEach((w, i) => {
+                    const e_r = rf + assets[i].beta * (rm - rf);
+                    p_ret += w * e_r;
+                    p_beta += w * assets[i].beta;
+                });
+
+                let sys_var = Math.pow(p_beta, 2) * Math.pow(sm, 2);
+                let idio_var = 0;
+                weights.forEach((w, i) => {
+                    const sig_i = assets[i].stdDev / 100;
+                    let idio_i = Math.pow(sig_i, 2) - Math.pow(assets[i].beta * sm, 2);
+                    if(idio_i < 0) idio_i = 0; 
+                    idio_var += Math.pow(w, 2) * idio_i;
+                });
+                
+                const p_vol = Math.sqrt(sys_var + idio_var);
+                const p_sharpe = (p_ret - rf) / p_vol;
+
+                mcPoints.push({ x: p_vol * 100, y: p_ret * 100, sharpe: p_sharpe, weights });
+
+                if (p_sharpe > bestSharpe) {
+                    bestSharpe = p_sharpe;
+                    bestPort = { ret: p_ret, vol: p_vol, sharpe: p_sharpe, weights };
+                }
+            }
+
+            if(bestPort) {
+                const wObj = {};
+                bestPort.weights.forEach((w, i) => { wObj[assets[i].ticker] = (w*100).toFixed(2); });
+                mcOptimal.value = {
+                    ret: (bestPort.ret * 100).toFixed(2),
+                    vol: (bestPort.vol * 100).toFixed(2),
+                    sharpe: bestPort.sharpe.toFixed(3),
+                    weights: wObj
+                };
+            }
+
+            chartMC = new Chart(ctx, {
+                type: 'scatter',
+                data: {
+                    datasets: [
+                        {
+                            label: 'Simulated Portfolios',
+                            data: mcPoints,
+                            backgroundColor: (context) => {
+                                const val = context.raw?.sharpe;
+                                if (!val) return '#3b82f6';
+                                const ratio = Math.max(0, Math.min(1, (val) / (bestSharpe*1.1))); 
+                                return `rgba(${Math.round(255*ratio)}, ${Math.round(150*ratio)}, 200, 0.4)`;
+                            },
+                            pointRadius: 2
+                        },
+                        {
+                            label: 'Max Sharpe',
+                            data: [{ x: bestPort.vol * 100, y: bestPort.ret * 100 }],
+                            backgroundColor: '#fbbf24', pointRadius: 8, borderColor: '#fff', borderWidth: 2
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: { tooltip: { callbacks: { label: (ctx) => `Vol: ${ctx.raw.x.toFixed(2)}%, Ret: ${ctx.raw.y.toFixed(2)}%` } } },
+                    scales: { x: { title: {display: true, text: 'Volatility (σ%)'} }, y: { title: {display: true, text: 'Expected Return (%)'} } }
+                }
+            });
+        }
+
         function getTypeColor(type) { return type==='Buy'?'text-red-400':'text-green-400'; }
         function getCategoryColorCode(cat) { return '#3b82f6'; }
         function formatNumber(n) { return new Intl.NumberFormat('zh-TW', {maximumFractionDigits:0}).format(n||0); }
         function formatPercent(n) { return ((n||0)*100).toFixed(1) + '%'; }
 
-        let chartSML, chartCML, chartAlloc, chartHist;
+        let chartSML, chartCML, chartAlloc, chartHist, chartRolling, chartMC;
 
         function initCharts() {
             const allocCtx = document.getElementById('allocationChart');
@@ -878,6 +1044,21 @@ createApp({
                 options: { 
                     responsive: true, maintainAspectRatio: false,
                     scales: { x: { title: {display:true, text:'StdDev (σ)'}, min: 0 }, y: { title: {display:true, text:'Expected Return (%)'} } }
+                }
+            });
+
+            // 👉 初始化 Rolling Chart
+            const rollingCtx = document.getElementById('rollingChart');
+            if(chartRolling) chartRolling.destroy();
+            if(rollingCtx) chartRolling = new Chart(rollingCtx, {
+                type: 'line',
+                data: { labels: [], datasets: [] },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    scales: {
+                        y: { type: 'linear', display: true, position: 'left', title: {display: true, text: 'Sharpe Ratio'} },
+                        y1: { type: 'linear', display: true, position: 'right', grid: {drawOnChartArea: false}, title: {display: true, text: 'Volatility (%)'} }
+                    }
                 }
             });
         }
@@ -926,7 +1107,7 @@ createApp({
 
                     const assetPoints = [];
                     for(const cat in groupedHoldings.value) {
-                        groupedHoldings.value[cat].items.forEach(i => {
+                       groupedHoldings.value[cat].items.forEach(i => {
                             assetPoints.push({ x: i.beta, y: parseFloat(i.returnRate), name: i.ticker });
                         });
                     }
@@ -945,6 +1126,53 @@ createApp({
                     ];
                     chartCML.update();
                 }
+
+                // 👉 更新 Rolling Chart
+                if (currentTab.value === 'analytics' && chartRolling) {
+                    const h = [...filteredHistory.value].sort((a,b) => new Date(a.date) - new Date(b.date));
+                    const periodReturns = [];
+                    const dates = [];
+                    
+                    for(let i=1; i<h.length; i++) {
+                        const netFlow = h[i].cost - h[i-1].cost;
+                        const denom = h[i-1].assets + (netFlow / 2);
+                        if(denom > 0) periodReturns.push((h[i].assets - h[i-1].assets - netFlow) / denom);
+                        dates.push(h[i].date);
+                    }
+
+                    const windowSize = 12; 
+                    const factor = Math.sqrt(12);
+                    const rf = riskParams.value.rf / 100;
+                    
+                    const rollLabels = [];
+                    const rollSharpe = [];
+                    const rollVol = [];
+
+                    if (periodReturns.length >= windowSize) {
+                        for (let i = windowSize; i <= periodReturns.length; i++) {
+                            const windowR = periodReturns.slice(i - windowSize, i);
+                            const avgR = windowR.reduce((a,b)=>a+b,0) / windowSize;
+                            const varR = windowR.reduce((a,b)=>a+Math.pow(b-avgR,2),0) / (windowSize-1);
+                            
+                            const annVol = Math.sqrt(varR) * factor;
+                            const cumTwr = windowR.reduce((acc, r) => acc * (1 + r), 1) - 1;
+                            const annRet = cumTwr; 
+                            
+                            const sharpe = annVol > 0 ? (annRet - rf) / annVol : 0;
+                            
+                            rollLabels.push(dates[i-1]);
+                            rollSharpe.push(sharpe.toFixed(2));
+                            rollVol.push((annVol*100).toFixed(2));
+                        }
+                    }
+
+                    chartRolling.data.labels = rollLabels;
+                    chartRolling.data.datasets = [
+                        { label: 'Rolling Sharpe', data: rollSharpe, borderColor: '#fbbf24', yAxisID: 'y', tension: 0.3, pointRadius: 1 },
+                        { label: 'Rolling Volatility (%)', data: rollVol, borderColor: '#ef4444', borderDash: [5,5], yAxisID: 'y1', tension: 0.3, pointRadius: 1 }
+                    ];
+                    chartRolling.update();
+                }
             });
         }
         
@@ -955,7 +1183,19 @@ createApp({
         watch(currentTab, () => { setTimeout(initCharts, 100); setTimeout(updateCharts, 200); });
         watch([exchangeRate, sheetUrl, isSimMode, riskParams, quantStartDate, dataFrequency], () => updateCharts(), {deep:true});
 
-        return { currentTab, showHistoryModal, isUpdating, isSimMode, toggleSimMode, transactions, groupedHoldings, categoryTotals, riskTotals, portfolioStats, totalStockValueTwd, totalStockCostTwd, totalStockUnrealizedPL, totalStockReturnRate, reversedTransactions, txForm, historyForm, riskParams, stats, exchangeRate, sheetUrl, addTransaction, addHistoryRecord, generateMonthlyMockData, removeTransaction, removeHistoryByDate, manualUpdate, updateMeta, fetchPrices, exportAll, importData, getTypeColor, getCategoryColorCode, formatNumber, formatPercent, lastUpdate, displayHistory, enrichedHistory, quantStartDate, dataFrequency, snapshotToHistory, snapshotDate, isDbSyncing };
+        // 👉 務必 Export 所有新增的變數與函數
+        return { 
+            currentTab, showHistoryModal, isUpdating, isSimMode, toggleSimMode, 
+            transactions, groupedHoldings, categoryTotals, riskTotals, portfolioStats, 
+            totalStockValueTwd, totalStockCostTwd, totalStockUnrealizedPL, totalStockReturnRate, 
+            reversedTransactions, txForm, historyForm, riskParams, stats, exchangeRate, 
+            sheetUrl, addTransaction, addHistoryRecord, generateMonthlyMockData, 
+            removeTransaction, removeHistoryByDate, manualUpdate, updateMeta, fetchPrices, 
+            exportAll, importData, getTypeColor, getCategoryColorCode, formatNumber, formatPercent, 
+            lastUpdate, displayHistory, enrichedHistory, quantStartDate, dataFrequency, 
+            snapshotToHistory, snapshotDate, isDbSyncing, 
+            isAppReady, showMCModal, mcOptimal, openMonteCarlo 
+        };
     }
 }).mount('#app');
 </script>
