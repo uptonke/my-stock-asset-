@@ -174,7 +174,7 @@
                         <div class="flex mb-2 items-center justify-between">
                             <div>
                                 <span class="text-xs font-bold inline-block py-1 px-2 uppercase rounded-md text-red-200 bg-red-900/50 border border-red-800 shadow-sm">
-                                    攻克 {{ activeFireTarget.age }} 歲目標達成率
+                                     {{ activeFireTarget.age }} 歲目標達成率
                                 </span>
                             </div>
                             <div class="text-right">
@@ -243,7 +243,7 @@
                         <h3 class="font-bold text-white"><i class="fas fa-layer-group text-yellow-500 mr-2"></i>庫存明細 (Risk Monitor)</h3>
                         <div class="text-xs text-gray-400">
                              <span v-if="lastUpdate" class="text-green-400 mr-2">更新於: {{ lastUpdate }}</span>
-                             <span class="text-red-400 font-bold ml-2"><i class="fas fa-exclamation-triangle"></i> 警告: 單一類別佔比 > 15%</span>
+                             <span class="text-red-400 font-bold ml-2"><i class="fas fa-exclamation-triangle"></i> 警告: 單一標的佔總資產 > 20%</span>
                         </div>
                     </div>
                     
@@ -260,7 +260,7 @@
                                     <th class="text-right">現價(TWD)</th>
                                     <th class="text-right">市值(TWD)</th>
                                     <th class="text-right">報酬率</th>
-                                    <th class="text-right pr-6">權重% (類別內)</th>
+                                    <th class="text-right pr-6">權重% (總體)</th>
                                 </tr>
                             </thead>
                             <tbody class="text-sm">
@@ -303,9 +303,9 @@
                                         <td class="text-right font-bold" :class="stock.returnRate >= 0 ? 'text-red-400' : 'text-green-400'">{{ stock.returnRate }}%</td>
                                         <td class="text-right pr-6 font-mono font-bold relative">
                                             <span :class="stock.isOverweight ? 'text-red-500' : 'text-blue-300'">
-                                                {{ formatPercent(stock.categoryWeight) }}
+                                                {{ formatPercent(stock.totalWeight) }}
                                             </span>
-                                            <i v-if="stock.isOverweight" class="fas fa-exclamation-triangle text-red-500 ml-1 animate-pulse" title="佔該類別 > 15%"></i>
+                                            <i v-if="stock.isOverweight" class="fas fa-exclamation-triangle text-red-500 ml-1 animate-pulse" title="佔總資產 > 15%"></i>
                                         </td>
                                     </tr>
                                </template>
@@ -722,12 +722,16 @@ createApp({
 
         const groupedHoldings = computed(() => {
             const groups = {};
+            let grandTotal = 0; // 新增：預先計算總市值避免循環依賴
+
             holdingsFlat.value.forEach(h => {
                 const rawPrice = priceMap.value[h.ticker];
                 const isUSD = (h.category === '美股');
                 const effectiveNativePrice = h.manualPrice || rawPrice || (h.totalCostTwd / h.shares / (isUSD ? exchangeRate.value : 1));
                 const currentPriceTwd = effectiveNativePrice * (isUSD ? exchangeRate.value : 1);
                 const mvTwd = h.shares * currentPriceTwd;
+
+                grandTotal += mvTwd; // 累加每一檔的市值到總市值
 
                 if (!groups[h.category]) groups[h.category] = { totalValue: 0, items: [] };
                 
@@ -750,17 +754,16 @@ createApp({
                groups[h.category].totalValue += mvTwd;
             });
 
+            // 再次迴圈分配總體權重
             for (const cat in groups) {
-                const total = groups[cat].totalValue;
                 groups[cat].items.forEach(item => {
-                    item.categoryWeight = total > 0 ? (item.marketValueTwd / total) : 0;
-                    item.isOverweight = item.categoryWeight > 0.15; 
+                    item.totalWeight = grandTotal > 0 ? (item.marketValueTwd / grandTotal) : 0;
+                    item.isOverweight = item.totalWeight > 0.15; // 判斷是否超過總資產的 15%
                 });
                 groups[cat].items.sort((a,b) => b.marketValueTwd - a.marketValueTwd);
             }
             return groups;
         });
-
         const categoryTotals = computed(() => {
             const totals = {};
             for(const cat in groupedHoldings.value) totals[cat] = groupedHoldings.value[cat].totalValue;
