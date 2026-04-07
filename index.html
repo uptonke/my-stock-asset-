@@ -1319,6 +1319,7 @@ createApp({
         watch([exchangeRate, sheetUrl, isSimMode, riskParams, quantStartDate, dataFrequency, fireTarget], () => updateCharts(), {deep:true});
 
         // 🚀 核心修復：所有在 HTML 用到的變數與函數都在這裡！
+        // 確保所有 HTML 綁定的變數與函數都有被導出
         return { 
             currentTab, showHistoryModal, isUpdating, isSimMode, toggleSimMode, 
             transactions, groupedHoldings, categoryTotals, riskTotals, portfolioStats, 
