@@ -575,22 +575,27 @@
         </div>
     </main>
 
-    <nav class="md:hidden fixed bottom-0 left-0 w-full bg-slate-900 border-t border-slate-800 z-[100] shadow-[0_-4px_10px_rgba(0,0,0,0.3)]" style="padding-bottom: env(safe-area-inset-bottom);">
-        <div class="flex justify-between items-center h-[60px]">
-            <button @click="currentTab='summary'" :class="currentTab==='summary'?'text-yellow-400':'text-gray-400 hover:text-gray-200'" class="flex-1 flex flex-col items-center justify-center gap-1 h-full">
-                <i class="fas fa-chart-pie text-[20px]"></i><span class="text-[10px] font-bold leading-none">總覽</span>
+    <nav class="md:hidden fixed bottom-0 left-0 right-0 w-full bg-slate-900 border-t border-slate-800 z-[100] shadow-[0_-4px_10px_rgba(0,0,0,0.3)]" style="padding-bottom: max(0.5rem, env(safe-area-inset-bottom));">
+        <div class="grid grid-cols-5 w-full h-[60px]">
+            <button @click="currentTab='summary'" :class="currentTab==='summary'?'text-yellow-400':'text-gray-400 hover:text-gray-200'" class="w-full h-full flex flex-col items-center justify-center gap-1 bg-transparent p-0 m-0 outline-none select-none touch-manipulation">
+                <div class="w-6 h-6 flex items-center justify-center"><i class="fas fa-chart-pie text-[20px]"></i></div>
+                <span class="text-[10px] font-bold leading-none">總覽</span>
             </button>
-            <button @click="currentTab='holdings'" :class="currentTab==='holdings'?'text-yellow-400':'text-gray-400 hover:text-gray-200'" class="flex-1 flex flex-col items-center justify-center gap-1 h-full">
-                <i class="fas fa-layer-group text-[20px]"></i><span class="text-[10px] font-bold leading-none">庫存</span>
+            <button @click="currentTab='holdings'" :class="currentTab==='holdings'?'text-yellow-400':'text-gray-400 hover:text-gray-200'" class="w-full h-full flex flex-col items-center justify-center gap-1 bg-transparent p-0 m-0 outline-none select-none touch-manipulation">
+                <div class="w-6 h-6 flex items-center justify-center"><i class="fas fa-layer-group text-[20px]"></i></div>
+                <span class="text-[10px] font-bold leading-none">庫存</span>
             </button>
-            <button @click="currentTab='advanced'" :class="currentTab==='advanced'?'text-yellow-400':'text-gray-400 hover:text-gray-200'" class="flex-1 flex flex-col items-center justify-center gap-1 h-full">
-                <i class="fas fa-chart-line text-[20px]"></i><span class="text-[10px] font-bold leading-none">分析</span>
+            <button @click="currentTab='advanced'" :class="currentTab==='advanced'?'text-yellow-400':'text-gray-400 hover:text-gray-200'" class="w-full h-full flex flex-col items-center justify-center gap-1 bg-transparent p-0 m-0 outline-none select-none touch-manipulation">
+                <div class="w-6 h-6 flex items-center justify-center"><i class="fas fa-chart-line text-[20px]"></i></div>
+                <span class="text-[10px] font-bold leading-none">分析</span>
             </button>
-            <button @click="currentTab='analytics'" :class="currentTab==='analytics'?'text-yellow-400':'text-gray-400 hover:text-gray-200'" class="flex-1 flex flex-col items-center justify-center gap-1 h-full">
-                <i class="fas fa-brain text-[20px]"></i><span class="text-[10px] font-bold leading-none">量化</span>
+            <button @click="currentTab='analytics'" :class="currentTab==='analytics'?'text-yellow-400':'text-gray-400 hover:text-gray-200'" class="w-full h-full flex flex-col items-center justify-center gap-1 bg-transparent p-0 m-0 outline-none select-none touch-manipulation">
+                <div class="w-6 h-6 flex items-center justify-center"><i class="fas fa-brain text-[20px]"></i></div>
+                <span class="text-[10px] font-bold leading-none">量化</span>
             </button>
-            <button @click="currentTab='ledger'" :class="currentTab==='ledger'?'text-yellow-400':'text-gray-400 hover:text-gray-200'" class="flex-1 flex flex-col items-center justify-center gap-1 h-full">
-                <i class="fas fa-pen-to-square text-[20px]"></i><span class="text-[10px] font-bold leading-none">記帳</span>
+            <button @click="currentTab='ledger'" :class="currentTab==='ledger'?'text-yellow-400':'text-gray-400 hover:text-gray-200'" class="w-full h-full flex flex-col items-center justify-center gap-1 bg-transparent p-0 m-0 outline-none select-none touch-manipulation">
+                <div class="w-6 h-6 flex items-center justify-center"><i class="fas fa-pen-to-square text-[20px]"></i></div>
+                <span class="text-[10px] font-bold leading-none">記帳</span>
             </button>
         </div>
     </nav>
