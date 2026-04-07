@@ -181,7 +181,7 @@
                         <h3 class="font-bold text-white"><i class="fas fa-layer-group text-yellow-500 mr-2"></i>庫存明細 (Risk Monitor)</h3>
                         <div class="text-xs text-gray-400">
                              <span v-if="lastUpdate" class="text-green-400 mr-2">更新於: {{ lastUpdate }}</span>
-                             <span class="text-red-400 font-bold ml-2"><i class="fas fa-exclamation-triangle"></i> 警告: 單一類別佔比 > 15%</span>
+                             <span class="text-red-400 font-bold ml-2"><i class="fas fa-exclamation-triangle"></i> 警告: 單一類別佔比 > 25%</span>
                         </div>
                     </div>
                     
@@ -243,7 +243,7 @@
                                             <span :class="stock.isOverweight ? 'text-red-500' : 'text-blue-300'">
                                                 {{ formatPercent(stock.categoryWeight) }}
                                             </span>
-                                            <i v-if="stock.isOverweight" class="fas fa-exclamation-triangle text-red-500 ml-1 animate-pulse" title="佔該類別 > 15%"></i>
+                                            <i v-if="stock.isOverweight" class="fas fa-exclamation-triangle text-red-500 ml-1 animate-pulse" title="佔該類別 >25%"></i>
                                         </td>
                                     </tr>
                                </template>
@@ -510,7 +510,7 @@ createApp({
         const currentTab = ref('summary');
         
         // ⚠️ 這是你的雲端儲存 API 網址，如果出現 404 請檢查部署設定 ⚠️
-        const gasApiUrl = 'https://script.google.com/macros/s/AKfycbwdQa4NWGh8nJ-pmVKWqGdwmZcWxGQvFAtlxbfQyJOWyB9ObIGNvC_rvTjf7tPupf9a/exec'; 
+        const gasApiUrl = 'https://script.google.com/macros/s/AKfycbxl6drdN4bWhxvKhsB_h5ZsMMujkTWTIdQ4yLq_7gQcpL9rROtl2P5s5k1Py1DZQDdXOQ/exec'; 
         const isDbSyncing = ref(false); 
 
         const showHistoryModal = ref(false);
@@ -856,7 +856,7 @@ createApp({
                 });
             }
             if (overweights.length > 0) {
-                insights.push({ icon: '🎯', color: 'text-orange-400', title: '非系統性風險過高', desc: `[ ${overweights.join(', ')} ] 佔單一類別權重過高 (>15%)。重倉若遇黑天鵝將重創淨值，強烈建議利用 MC 最佳化重新 Rebalance。` });
+                insights.push({ icon: '🎯', color: 'text-orange-400', title: '非系統性風險過高', desc: `[ ${overweights.join(', ')} ] 佔單一類別權重過高 (>25%)。重倉若遇黑天鵝將重創淨值，強烈建議利用 MC 最佳化重新 Rebalance。` });
             }
 
             if (beta > 1.2) {
