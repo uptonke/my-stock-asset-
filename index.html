@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>股票紀錄 v17.6 (Ultimate Fix)</title>
+    <title>股票紀錄 v17.7 (FIRE Dashboard)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -37,6 +37,10 @@
         ::-webkit-scrollbar { width: 8px; height: 8px; }
         ::-webkit-scrollbar-track { background: #0f172a; }
         ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+        
+        /* 手機端導覽列隱藏滾動條 */
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
     </style>
 </head>
 <body class="h-screen flex flex-col overflow-hidden text-sm">
@@ -48,26 +52,21 @@
         <p class="text-lg font-bold tracking-widest animate-pulse">系統初始化中 (Loading DB)...</p>
     </div>
 
-    <header class="z-50 flex-none h-16 px-6 flex items-center justify-between shadow-lg transition-colors duration-500" :class="isSimMode ? 'glass-sim' : 'glass'">
-        <div class="flex items-center gap-6">
-            <h1 class="font-bold text-xl tracking-wide flex items-center gap-2 text-white">
-                <i class="fas fa-database text-yellow-500"></i> Stock Portfolio
-                <span v-if="!isSimMode" class="text-xs bg-yellow-600 px-2 py-0.5 rounded text-black font-bold">v17.6</span>
-                <span v-else class="text-xs bg-red-600 px-2 py-0.5 rounded text-white font-bold animate-pulse">SIMULATION</span>
-                <i v-if="isDbSyncing" class="fas fa-cloud-upload-alt animate-bounce text-blue-400 text-sm ml-2" title="雲端同步中"></i>
+    <header class="z-50 flex-none h-16 px-4 md:px-6 flex items-center justify-between shadow-lg transition-colors duration-500" :class="isSimMode ? 'glass-sim' : 'glass'">
+        <div class="flex items-center gap-2 md:gap-6 flex-1 overflow-hidden">
+            <h1 class="font-bold text-lg md:text-xl tracking-wide flex items-center gap-2 text-white shrink-0">
+                <i class="fas fa-database text-yellow-500"></i> <span class="hidden sm:inline">Stock Portfolio</span>
+                <span v-if="!isSimMode" class="text-xs bg-yellow-600 px-2 py-0.5 rounded text-black font-bold">v17.7</span>
+                <span v-else class="text-xs bg-red-600 px-2 py-0.5 rounded text-white font-bold animate-pulse">SIM</span>
+                <i v-if="isDbSyncing" class="fas fa-cloud-upload-alt animate-bounce text-blue-400 text-sm ml-1" title="雲端同步中"></i>
             </h1>
             
-            <div class="hidden md:flex items-center gap-3 bg-slate-800 py-1 px-3 rounded-lg border border-slate-700">
+            <div class="hidden lg:flex items-center gap-3 bg-slate-800 py-1 px-3 rounded-lg border border-slate-700">
                 <span class="text-gray-400 text-xs">USD/TWD:</span>
                 <input v-model.number="exchangeRate" type="number" step="0.01" class="w-16 bg-transparent text-center font-mono font-bold text-green-400 focus:outline-none border-b border-gray-600">
             </div>
 
-            <div class="hidden md:flex items-center gap-2 bg-slate-800 py-1 px-3 rounded-lg border border-slate-700 w-80">
-                <i class="fab fa-google text-green-500"></i>
-                <input v-model="sheetUrl" placeholder="貼上 Google Sheet 網址" class="w-full bg-transparent text-xs text-white focus:outline-none placeholder-gray-500">
-            </div>
-
-            <nav class="flex gap-6 font-medium ml-4 hidden md:flex">
+            <nav class="flex gap-4 md:gap-6 font-medium ml-2 md:ml-4 overflow-x-auto whitespace-nowrap no-scrollbar flex-1">
                 <button @click="currentTab='summary'" :class="currentTab==='summary'?'tab-active':'tab-inactive'" class="py-4 px-2 transition">總覽</button>
                 <button @click="currentTab='holdings'" :class="currentTab==='holdings'?'tab-active':'tab-inactive'" class="py-4 px-2 transition">庫存</button>
                 <button @click="currentTab='advanced'" :class="currentTab==='advanced'?'tab-active':'tab-inactive'" class="py-4 px-2 transition"><i class="fas fa-chart-network mr-1"></i>分析</button>
@@ -75,8 +74,8 @@
                 <button @click="currentTab='ledger'" :class="currentTab==='ledger'?'tab-active':'tab-inactive'" class="py-4 px-2 transition">記帳</button>
             </nav>
        </div>
-       <div class="flex gap-3 items-center">
-             <div class="flex items-center mr-4">
+       <div class="flex gap-2 md:gap-3 items-center shrink-0">
+             <div class="hidden sm:flex items-center mr-2">
                 <span class="text-xs mr-2 font-bold" :class="isSimMode ? 'text-red-400' : 'text-gray-400'">{{ isSimMode ? '模擬模式' : '真實模式' }}</span>
                 <button @click="toggleSimMode" class="relative inline-flex items-center h-6 rounded-full w-11 transition-colors focus:outline-none" :class="isSimMode ? 'bg-red-600' : 'bg-gray-600'">
                     <span class="inline-block w-4 h-4 transform bg-white rounded-full transition-transform" :class="isSimMode ? 'translate-x-6' : 'translate-x-1'"></span>
@@ -129,6 +128,40 @@
                     </div>
                 </div>
 
+                <div class="glass p-5 rounded-2xl border-l-4 border-red-500 relative overflow-hidden">
+                    <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
+                        <div>
+                            <h3 class="text-lg font-bold text-white flex items-center gap-2">
+                                <i class="fas fa-fire text-red-500"></i> FIRE 財務自由進度
+                            </h3>
+                            <div class="text-xs text-gray-400 mt-1">目前淨值：NT$ {{ formatNumber(totalStockValueTwd) }} / 目標水位：NT$ {{ formatNumber(fireTarget) }}</div>
+                        </div>
+                        <div class="flex items-center gap-2 bg-gray-900/50 p-2 rounded-lg border border-gray-700/50">
+                            <span class="text-[10px] text-gray-400 font-bold uppercase">自訂目標 (TWD):</span>
+                            <input v-model.number="fireTarget" type="number" class="w-32 bg-gray-800 text-white border border-gray-600 text-xs rounded px-2 py-1 text-right focus:border-red-500 outline-none font-mono" placeholder="輸入目標金額">
+                        </div>
+                    </div>
+                    <div class="relative pt-1">
+                        <div class="flex mb-2 items-center justify-between">
+                            <div>
+                                <span class="text-xs font-bold inline-block py-1 px-2 uppercase rounded-md text-red-200 bg-red-900/50 border border-red-800">
+                                    達成率
+                                </span>
+                            </div>
+                            <div class="text-right">
+                                <span class="text-lg font-bold inline-block text-red-400 font-mono tracking-wider">
+                                    {{ fireProgress.toFixed(2) }}%
+                                </span>
+                            </div>
+                        </div>
+                        <div class="overflow-hidden h-3 mb-2 text-xs flex rounded-full bg-gray-800 border border-gray-700 shadow-inner">
+                            <div :style="{ width: Math.min(fireProgress, 100) + '%' }" class="shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center bg-gradient-to-r from-orange-500 to-red-500 transition-all duration-1000 relative">
+                                <div class="absolute top-0 left-0 bottom-0 right-0 bg-white opacity-20" style="animation: pulse 2s infinite;"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="glass p-5 rounded-2xl border-l-4 border-indigo-500 relative overflow-hidden mt-6 mb-6">
                     <div class="absolute -right-4 -top-4 opacity-10">
                         <i class="fas fa-brain text-9xl text-indigo-400"></i>
@@ -160,11 +193,7 @@
                     <div class="glass p-5 rounded-2xl col-span-2 flex flex-col">
                         <div class="flex justify-between items-center mb-4 border-l-4 border-emerald-500 pl-3">
                             <h4 class="text-white font-bold">淨值成長趨勢 (NAV)</h4>
-                            <div class="flex items-center gap-2">
-                                <span class="text-[10px] text-gray-400 font-bold uppercase">FIRE Target:</span>
-                                <input v-model.number="fireTarget" type="number" class="w-24 bg-gray-800 text-white border border-gray-600 text-xs rounded px-2 py-1 text-right focus:border-yellow-500 outline-none" placeholder="目標金額">
                             </div>
-                        </div>
                         <div class="flex-1 relative">
                             <canvas id="historyChart"></canvas>
                              <div v-if="displayHistory.length < 2" class="absolute inset-0 flex items-center justify-center text-gray-500 text-xs bg-gray-900/50 rounded-lg">
@@ -181,7 +210,7 @@
                         <h3 class="font-bold text-white"><i class="fas fa-layer-group text-yellow-500 mr-2"></i>庫存明細 (Risk Monitor)</h3>
                         <div class="text-xs text-gray-400">
                              <span v-if="lastUpdate" class="text-green-400 mr-2">更新於: {{ lastUpdate }}</span>
-                             <span class="text-red-400 font-bold ml-2"><i class="fas fa-exclamation-triangle"></i> 警告: 單一類別佔比 > 25%</span>
+                             <span class="text-red-400 font-bold ml-2"><i class="fas fa-exclamation-triangle"></i> 警告: 單一類別佔比 > 15%</span>
                         </div>
                     </div>
                     
@@ -243,7 +272,7 @@
                                             <span :class="stock.isOverweight ? 'text-red-500' : 'text-blue-300'">
                                                 {{ formatPercent(stock.categoryWeight) }}
                                             </span>
-                                            <i v-if="stock.isOverweight" class="fas fa-exclamation-triangle text-red-500 ml-1 animate-pulse" title="佔該類別 >25%"></i>
+                                            <i v-if="stock.isOverweight" class="fas fa-exclamation-triangle text-red-500 ml-1 animate-pulse" title="佔該類別 > 15%"></i>
                                         </td>
                                     </tr>
                                </template>
@@ -509,8 +538,7 @@ createApp({
         const mcOptimal = ref(null); 
         const currentTab = ref('summary');
         
-        // ⚠️ 這是你的雲端儲存 API 網址，如果出現 404 請檢查部署設定 ⚠️
-        const gasApiUrl = 'https://script.google.com/macros/s/AKfycbxl6drdN4bWhxvKhsB_h5ZsMMujkTWTIdQ4yLq_7gQcpL9rROtl2P5s5k1Py1DZQDdXOQ/exec'; 
+        const gasApiUrl = 'https://script.google.com/macros/s/AKfycbwdQa4NWGh8nJ-pmVKWqGdwmZcWxGQvFAtlxbfQyJOWyB9ObIGNvC_rvTjf7tPupf9a/exec'; 
         const isDbSyncing = ref(false); 
 
         const showHistoryModal = ref(false);
@@ -856,7 +884,7 @@ createApp({
                 });
             }
             if (overweights.length > 0) {
-                insights.push({ icon: '🎯', color: 'text-orange-400', title: '非系統性風險過高', desc: `[ ${overweights.join(', ')} ] 佔單一類別權重過高 (>25%)。重倉若遇黑天鵝將重創淨值，強烈建議利用 MC 最佳化重新 Rebalance。` });
+                insights.push({ icon: '🎯', color: 'text-orange-400', title: '非系統性風險過高', desc: `[ ${overweights.join(', ')} ] 佔單一類別權重過高 (>15%)。重倉若遇黑天鵝將重創淨值，強烈建議利用 MC 最佳化重新 Rebalance。` });
             }
 
             if (beta > 1.2) {
@@ -879,6 +907,12 @@ createApp({
             }
 
             return insights;
+        });
+
+        // 👉 計算 FIRE 達成率
+        const fireProgress = computed(() => {
+            if (fireTarget.value <= 0) return 0;
+            return (totalStockValueTwd.value / fireTarget.value) * 100;
         });
 
         async function manualUpdate(stock) { 
@@ -1204,20 +1238,10 @@ createApp({
                     chartHist.data.datasets[0] = { label: 'NAV', data: sorted.map(h=>h.assets), borderColor: '#3b82f6', fill: true, backgroundColor: 'rgba(59,130,246,0.1)', tension: 0.1 };
                     chartHist.data.datasets[1] = { label: 'Cost', data: sorted.map(h=>h.cost), borderColor: '#10b981', borderDash:[5,5], tension: 0.1 };
                     
-                    if (fireTarget.value > 0) {
-                        chartHist.data.datasets[2] = { 
-                            label: 'FIRE Target', 
-                            data: Array(sorted.length).fill(fireTarget.value), 
-                            borderColor: '#fbbf24', 
-                            borderWidth: 2, 
-                            borderDash: [8, 4], 
-                            pointRadius: 0,
-                            fill: false 
-                        };
-                    } else if (chartHist.data.datasets.length > 2) {
-                        chartHist.data.datasets.pop();
+                    // 確保沒有殘留的舊水線
+                    if (chartHist.data.datasets.length > 2) {
+                        chartHist.data.datasets.splice(2);
                     }
-                    
                     chartHist.update();
                 }
 
@@ -1318,8 +1342,7 @@ createApp({
 
         watch([exchangeRate, sheetUrl, isSimMode, riskParams, quantStartDate, dataFrequency, fireTarget], () => updateCharts(), {deep:true});
 
-        // 🚀 核心修復：所有在 HTML 用到的變數與函數都在這裡！
-        // 確保所有 HTML 綁定的變數與函數都有被導出
+        // 🚀 核心修復：所有在 HTML 用到的變數與函數都在這裡！保證沒有重複！
         return { 
             currentTab, showHistoryModal, isUpdating, isSimMode, toggleSimMode, 
             transactions, groupedHoldings, categoryTotals, riskTotals, portfolioStats, 
@@ -1331,7 +1354,7 @@ createApp({
             lastUpdate, displayHistory, enrichedHistory, quantStartDate, dataFrequency, 
             snapshotToHistory, snapshotDate, isDbSyncing, 
             isAppReady, showMCModal, mcOptimal, openMonteCarlo, aiInsights, quantDays,
-            fireTarget, updateCharts
+            fireTarget, fireProgress, updateCharts
         };
     }
 }).mount('#app');
