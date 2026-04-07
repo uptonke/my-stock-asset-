@@ -900,13 +900,14 @@ createApp({
             // 情況A：完全沒庫存
             if (val === 0) return [];
 
+            // 1. 績效與風控檢視
             if (ret >= 20) {
                 insights.push({ icon: '🎉', color: 'text-green-400', title: '獲利豐厚', desc: `未實現報酬達 ${ret}%，表現強勢！建議可評估啟動動態停利 (Trailing Stop)，或將部分資金轉入低波動資產鎖住 Alpha。` });
             } else if (ret <= -15) {
                 insights.push({ icon: '⚠️', color: 'text-red-400', title: '回撤警戒', desc: `目前虧損 ${ret}%，請重新 Due Diligence 檢視是否跌破原始投資理由。切忌盲目向下攤平，嚴格執行停損紀律。` });
             }
 
-            // 更新為：偵測「總體資產」佔比超過 15% 的重倉標的
+            // 2. 集中度風險 (偵測「總體資產」佔比超過 15% 的重倉標的)
             let overweights = [];
             for (const cat in groupedHoldings.value) {
                 groupedHoldings.value[cat].items.forEach(item => {
@@ -917,26 +918,56 @@ createApp({
                 insights.push({ icon: '🎯', color: 'text-orange-400', title: '集中度風險過高', desc: `[ ${overweights.join(', ')} ] 佔「總資產」權重過高 (>15%)。重倉若遇黑天鵝將重創淨值，強烈建議利用 MC 最佳化重新 Rebalance。` });
             }
 
+            // 3. 量化系統風險 (組合 Beta)
             if (beta > 1.2) {
                 insights.push({ icon: '🔥', color: 'text-red-400', title: '攻擊型配置 (High Beta)', desc: `組合 Beta 達 ${beta}。大盤多頭時具備強大爆發力，但若總經指標轉弱，回撤也會極深，請確保備足緊急預備金。` });
             } else if (beta > 0 && beta < 0.8) {
                 insights.push({ icon: '🛡️', color: 'text-blue-400', title: '防禦型配置 (Low Beta)', desc: `組合 Beta 僅 ${beta}。雖然抗跌能力極佳，但可能會錯失牛市行情。若你風險承受度夠高，建議適度提升適當曝險。` });
             }
 
+            // 4. 資金效率 (Sharpe Ratio)
             if (!isNaN(sharpe)) {
                 if (sharpe < 0.8 && sharpe > 0) {
-                    insights.push({ icon: '📉', color: 'text-yellow-400', title: '風險報酬比不佳', desc: `夏普值 ${sharpe} 偏低。你承擔了過多波動，卻沒換來對應的報酬。建議跑一次 Monte Carlo 尋找最佳權重。` });
+                    insights.push({ icon: '📉', color: 'text-yellow-400', title: '風險報酬比不佳', desc: `夏普值 ${sharpe} 偏低。你承擔了過多波動，卻沒換來對應的報酬。建議立刻去「量化分析」跑一次 Monte Carlo 尋找最佳權重。` });
                 } else if (sharpe >= 1.5) {
                     insights.push({ icon: '🌟', color: 'text-yellow-400', title: '卓越的資金效率', desc: `夏普值高達 ${sharpe}！目前的策略完美平衡了波動與超額報酬，請繼續保持目前的選股與擇時策略。` });
                 }
             }
 
+            // 5. 避險部位 (Dry Powder)
             const lowRiskRatio = riskTotals.value.Low / val;
             if (val > 0 && lowRiskRatio < 0.05) {
                  insights.push({ icon: '💸', color: 'text-blue-300', title: '避險緩衝不足', desc: `低風險資產不到 5%。建議保留適當比例的現金或短天期美債，做為股市大跌時逢低加碼的銀彈 (Dry Powder)。` });
             }
 
-            // 👉 情況B (防呆)：如果上述風險完全沒觸發，代表配置極度優良
+            // 👉 6. 連動 Monte Carlo 最佳化結果 (讀取 MC 運算結果並提出行動指令)
+            if (mcOptimal.value && mcOptimal.value.weights.length > 0) {
+                // 找出偏離最佳權重超過 5% 的標的，提示需要大動作調整
+                const majorBuys = mcOptimal.value.weights.filter(w => parseFloat(w.diff) >= 5).map(w => `${w.ticker} (+${w.diff}%)`);
+                const majorSells = mcOptimal.value.weights.filter(w => parseFloat(w.diff) <= -5).map(w => `${w.ticker} (${w.diff}%)`);
+                
+                let mcActionText = '';
+                if (majorBuys.length > 0) mcActionText += `優先加碼：${majorBuys.join(', ')}。 `;
+                if (majorSells.length > 0) mcActionText += `優先減碼：${majorSells.join(', ')}。 `;
+                
+                if (mcActionText !== '') {
+                    insights.push({ 
+                        icon: '🤖', 
+                        color: 'text-purple-400', 
+                        title: 'MC 最佳化執行指令', 
+                        desc: `根據剛才的蒙地卡羅模型 (最大夏普 ${mcOptimal.value.sharpe})，有部位嚴重偏離最佳化權重。建議：${mcActionText} (詳細金額請見 MC 面板)` 
+                    });
+                } else {
+                    insights.push({ 
+                        icon: '⚖️', 
+                        color: 'text-purple-400', 
+                        title: 'MC 權重已達最佳化', 
+                        desc: `根據蒙地卡羅運算結果，目前所有標的的權重偏離皆小於 5%，你的投組配置已經極度接近模型最佳解 (Max Sharpe)，暫無需調整。` 
+                    });
+                }
+            }
+
+            // 👉 情況B (防呆)：如果上述風險完全沒觸發，代表現況配置極度優良
             if (insights.length === 0 && val > 0) {
                  insights.push({ icon: '✅', color: 'text-green-400', title: '配置極度健康', desc: `目前的投資組合沒有觸發任何風險警報！波動度與預期報酬皆在合理範圍內，資產分散且無明顯死角，請繼續保持這套紀律。` });
             }
