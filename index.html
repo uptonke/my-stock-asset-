@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>股票紀錄 v17.5 (FIRE & Quant Pro)</title>
+    <title>股票紀錄 v17.6 (Ultimate Fix)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -52,7 +52,7 @@
         <div class="flex items-center gap-6">
             <h1 class="font-bold text-xl tracking-wide flex items-center gap-2 text-white">
                 <i class="fas fa-database text-yellow-500"></i> Stock Portfolio
-                <span v-if="!isSimMode" class="text-xs bg-yellow-600 px-2 py-0.5 rounded text-black font-bold">v17.5</span>
+                <span v-if="!isSimMode" class="text-xs bg-yellow-600 px-2 py-0.5 rounded text-black font-bold">v17.6</span>
                 <span v-else class="text-xs bg-red-600 px-2 py-0.5 rounded text-white font-bold animate-pulse">SIMULATION</span>
                 <i v-if="isDbSyncing" class="fas fa-cloud-upload-alt animate-bounce text-blue-400 text-sm ml-2" title="雲端同步中"></i>
             </h1>
@@ -509,6 +509,7 @@ createApp({
         const mcOptimal = ref(null); 
         const currentTab = ref('summary');
         
+        // ⚠️ 這是你的雲端儲存 API 網址，如果出現 404 請檢查部署設定 ⚠️
         const gasApiUrl = 'https://script.google.com/macros/s/AKfycbwdQa4NWGh8nJ-pmVKWqGdwmZcWxGQvFAtlxbfQyJOWyB9ObIGNvC_rvTjf7tPupf9a/exec'; 
         const isDbSyncing = ref(false); 
 
@@ -519,7 +520,7 @@ createApp({
         
         const exchangeRate = ref(32.5);
         const sheetUrl = ref('');
-        const fireTarget = ref(10000000); // 👉 FIRE 水位線預設 1000 萬
+        const fireTarget = ref(10000000); 
 
         watch(exchangeRate, async (val) => await localforage.setItem('exchangeRate', val));
         watch(sheetUrl, async (val) => await localforage.setItem('sheetUrl', val));
@@ -1197,7 +1198,6 @@ createApp({
                     chartAlloc.update();
                 }
                 
-                // 👉 FIRE 水位線圖表更新邏輯
                 if (chartHist) {
                     const history = displayHistory.value; const sorted = [...history].sort((a,b)=>new Date(a.date)-new Date(b.date));
                     chartHist.data.labels = sorted.map(h=>h.date);
@@ -1316,10 +1316,9 @@ createApp({
             nextTick(() => { updateCharts(); });
         });
 
-        // 👉 將 fireTarget 納入 Watch 陣列，數字更改就會自動重繪水線
         watch([exchangeRate, sheetUrl, isSimMode, riskParams, quantStartDate, dataFrequency, fireTarget], () => updateCharts(), {deep:true});
 
-        // 🚀 最終確認所有變數 Return
+        // 🚀 核心修復：所有在 HTML 用到的變數與函數都在這裡！
         return { 
             currentTab, showHistoryModal, isUpdating, isSimMode, toggleSimMode, 
             transactions, groupedHoldings, categoryTotals, riskTotals, portfolioStats, 
@@ -1331,7 +1330,7 @@ createApp({
             lastUpdate, displayHistory, enrichedHistory, quantStartDate, dataFrequency, 
             snapshotToHistory, snapshotDate, isDbSyncing, 
             isAppReady, showMCModal, mcOptimal, openMonteCarlo, aiInsights, quantDays,
-            fireTarget
+            fireTarget, updateCharts
         };
     }
 }).mount('#app');
