@@ -3,12 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>股票紀錄 v18 (Offline FIRE Chart)</title>
+    <title>股票紀錄 v18.0 (Supabase Enterprise Edition)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/localforage/1.10.0/localforage.min.js"></script>
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
         body { font-family: 'Microsoft JhengHei', 'Segoe UI', Roboto, sans-serif; background-color: #0f172a; color: #e2e8f0; }
@@ -49,15 +50,16 @@
     
     <div v-if="!isAppReady" class="fixed inset-0 z-[999] bg-[#0f172a] flex flex-col items-center justify-center text-white">
         <i class="fas fa-circle-notch fa-spin text-4xl text-yellow-500 mb-4"></i>
-        <p class="text-lg font-bold tracking-widest animate-pulse">系統初始化中 (Loading DB)...</p>
+        <p class="text-lg font-bold tracking-widest animate-pulse">系統初始化中 (Supabase Syncing)...</p>
     </div>
 
     <header class="z-50 flex-none h-16 px-4 md:px-6 flex items-center justify-between shadow-lg transition-colors duration-500" :class="isSimMode ? 'glass-sim' : 'glass'">
         <div class="flex items-center gap-2 md:gap-6 flex-1 overflow-hidden">
             <h1 class="font-bold text-lg md:text-xl tracking-wide flex items-center gap-2 text-white shrink-0">
                 <i class="fas fa-database text-yellow-500"></i> <span class="hidden sm:inline">Stock Portfolio</span>
-                <span v-if="!isSimMode" class="text-xs bg-yellow-600 px-2 py-0.5 rounded text-black font-bold">v17.9</span>
+                <span v-if="!isSimMode" class="text-xs bg-yellow-600 px-2 py-0.5 rounded text-black font-bold">v18.0</span>
                 <span v-else class="text-xs bg-red-600 px-2 py-0.5 rounded text-white font-bold animate-pulse">SIM</span>
+                <i v-if="isDbSyncing" class="fas fa-cloud-upload-alt animate-bounce text-blue-400 text-sm ml-1" title="雲端同步中"></i>
             </h1>
             
             <div class="hidden lg:flex items-center gap-3 bg-slate-800 py-1 px-3 rounded-lg border border-slate-700">
@@ -174,7 +176,7 @@
                         <div class="flex mb-2 items-center justify-between">
                             <div>
                                 <span class="text-xs font-bold inline-block py-1 px-2 uppercase rounded-md text-red-200 bg-red-900/50 border border-red-800 shadow-sm">
-                                     {{ activeFireTarget.age }} 歲目標達成率
+                                    攻克 {{ activeFireTarget.age }} 歲目標達成率
                                 </span>
                             </div>
                             <div class="text-right">
@@ -195,26 +197,38 @@
                     </div>
                 </div>
 
-                <div class="glass p-5 rounded-2xl border-l-4 border-indigo-500 relative overflow-hidden mt-6 mb-6">
-                    <div class="absolute -right-4 -top-4 opacity-10">
+                <div class="glass p-5 rounded-2xl border-l-4 border-indigo-500 relative mt-6 mb-6 transition-all duration-300">
+                    <div class="absolute -right-4 -top-4 opacity-10 pointer-events-none">
                         <i class="fas fa-brain text-9xl text-indigo-400"></i>
                     </div>
-                    <div class="relative z-10">
-                        <h3 class="text-lg font-bold text-white mb-3 flex items-center gap-2">
-                            <i class="fas fa-magic text-indigo-400 animate-pulse"></i> AI 投組診斷與行動建議 (Insights)
-                        </h3>
-                        <div v-if="!aiInsights || aiInsights.length === 0" class="text-gray-400 text-sm">
-                            <i class="fas fa-spinner fa-spin mr-1"></i> 資料搜集中... 請確保已有庫存並設定標的 Beta 與 SD。
+                    <div class="relative z-10 flex flex-col gap-2">
+                        <div class="flex justify-between items-center cursor-pointer group" @click="isAiExpanded = !isAiExpanded">
+                            <div class="flex-1 pr-4">
+                                <h3 class="text-lg font-bold text-white flex items-center gap-2 mb-1">
+                                    <i class="fas fa-magic text-indigo-400" :class="{'animate-pulse': !isAiExpanded}"></i> 
+                                    AI 量化診斷與投組總結
+                                </h3>
+                                <p class="text-sm font-medium transition-colors" :class="aiInsights.details.length > 0 ? 'text-indigo-200 group-hover:text-indigo-100' : 'text-gray-400'">
+                                    <i v-if="aiInsights.details.length === 0" class="fas fa-spinner fa-spin mr-1"></i>
+                                    {{ aiInsights.summary }}
+                                </p>
+                            </div>
+                            <button class="text-indigo-400 hover:text-white transition-transform duration-300 transform bg-gray-900/50 w-8 h-8 rounded-full flex items-center justify-center border border-indigo-500/30" :class="{'rotate-180': isAiExpanded}">
+                                <i class="fas fa-chevron-down"></i>
+                            </button>
                         </div>
-                        <ul v-else class="space-y-3">
-                            <li v-for="(insight, idx) in aiInsights" :key="idx" class="flex items-start gap-3 text-sm bg-gray-900/30 p-3 rounded-lg border border-gray-700/50">
-                                <span class="text-xl mt-0.5" v-html="insight.icon"></span>
-                                <div>
-                                    <span class="font-bold" :class="insight.color">{{ insight.title }}：</span>
-                                    <span class="text-gray-300 leading-relaxed">{{ insight.desc }}</span>
-                                </div>
-                            </li>
-                        </ul>
+                        
+                        <div v-show="isAiExpanded" class="mt-3 border-t border-indigo-500/30 pt-4 animate-fade-in">
+                            <ul v-if="aiInsights.details.length > 0" class="space-y-3">
+                                <li v-for="(insight, idx) in aiInsights.details" :key="idx" class="flex items-start gap-3 text-sm bg-gray-900/30 p-3 rounded-lg border border-gray-700/50 hover:border-indigo-500/50 transition-colors">
+                                    <span class="text-xl mt-0.5" v-html="insight.icon"></span>
+                                    <div>
+                                        <span class="font-bold tracking-wide" :class="insight.color">{{ insight.title }}：</span>
+                                        <span class="text-gray-300 leading-relaxed">{{ insight.desc }}</span>
+                                    </div>
+                                </li>
+                            </ul>
+                        </div>
                     </div>
                 </div>
 
@@ -243,7 +257,7 @@
                         <h3 class="font-bold text-white"><i class="fas fa-layer-group text-yellow-500 mr-2"></i>庫存明細 (Risk Monitor)</h3>
                         <div class="text-xs text-gray-400">
                              <span v-if="lastUpdate" class="text-green-400 mr-2">更新於: {{ lastUpdate }}</span>
-                             <span class="text-red-400 font-bold ml-2"><i class="fas fa-exclamation-triangle"></i> 警告: 單一標的佔總資產 > 20%</span>
+                             <span class="text-red-400 font-bold ml-2"><i class="fas fa-exclamation-triangle"></i> 警告: 單一標的佔總資產 > 15%</span>
                         </div>
                     </div>
                     
@@ -434,6 +448,41 @@
                     </div>
                 </div>
 
+                <div class="glass p-5 rounded-2xl border-l-4 border-indigo-500 relative mt-6 mb-6 transition-all duration-300">
+                    <div class="absolute -right-4 -top-4 opacity-10 pointer-events-none">
+                        <i class="fas fa-brain text-9xl text-indigo-400"></i>
+                    </div>
+                    <div class="relative z-10 flex flex-col gap-2">
+                        <div class="flex justify-between items-center cursor-pointer group" @click="isAiExpanded = !isAiExpanded">
+                            <div class="flex-1 pr-4">
+                                <h3 class="text-lg font-bold text-white flex items-center gap-2 mb-1">
+                                    <i class="fas fa-magic text-indigo-400" :class="{'animate-pulse': !isAiExpanded}"></i> 
+                                    AI 量化診斷與投組總結
+                                </h3>
+                                <p class="text-sm font-medium transition-colors" :class="aiInsights.details.length > 0 ? 'text-indigo-200 group-hover:text-indigo-100' : 'text-gray-400'">
+                                    <i v-if="aiInsights.details.length === 0" class="fas fa-spinner fa-spin mr-1"></i>
+                                    {{ aiInsights.summary }}
+                                </p>
+                            </div>
+                            <button class="text-indigo-400 hover:text-white transition-transform duration-300 transform bg-gray-900/50 w-8 h-8 rounded-full flex items-center justify-center border border-indigo-500/30" :class="{'rotate-180': isAiExpanded}">
+                                <i class="fas fa-chevron-down"></i>
+                            </button>
+                        </div>
+                        
+                        <div v-show="isAiExpanded" class="mt-3 border-t border-indigo-500/30 pt-4 animate-fade-in">
+                            <ul v-if="aiInsights.details.length > 0" class="space-y-3">
+                                <li v-for="(insight, idx) in aiInsights.details" :key="idx" class="flex items-start gap-3 text-sm bg-gray-900/30 p-3 rounded-lg border border-gray-700/50 hover:border-indigo-500/50 transition-colors">
+                                    <span class="text-xl mt-0.5" v-html="insight.icon"></span>
+                                    <div>
+                                        <span class="font-bold tracking-wide" :class="insight.color">{{ insight.title }}：</span>
+                                        <span class="text-gray-300 leading-relaxed">{{ insight.desc }}</span>
+                                    </div>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
                     <div class="quant-card"><div class="quant-label text-blue-400">年化報酬 (TWR)</div><div class="quant-value text-white">{{ stats.annRet }}%</div></div>
                     <div class="quant-card"><div class="quant-label text-gray-400">年化標準差 (StdDev)</div><div class="quant-value text-white">{{ stats.annVol }}%</div></div>
@@ -566,14 +615,22 @@ const { createApp, ref, computed, onMounted, watch, nextTick } = Vue;
 
 createApp({
     setup() {
+        const currentTab = ref('summary');
+        const isAiExpanded = ref(false); // 控制 AI 報告展開/折疊
+        
+        // 👉 初始化 Supabase 客戶端
+        const supabaseUrl = 'https://yrccanqxzrcoknzabifz.supabase.co';
+        const supabaseKey = 'sb_publishable_lDfwRDxgMhzRwVk0-Qu3vg_9HTmTFZy';
+        const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
+
         const isAppReady = ref(false); 
         const showMCModal = ref(false); 
         const mcOptimal = ref(null); 
-        const currentTab = ref('summary');
         
+        const isDbSyncing = ref(false); 
+        const showHistoryModal = ref(false);
         const isUpdating = ref(false);
         const isSimMode = ref(false);
-        const showHistoryModal = ref(false);
         const lastUpdate = ref(null);
         
         const exchangeRate = ref(32.5);
@@ -587,10 +644,6 @@ createApp({
             { age: 48, year: 2052, amount: 50000000 }
         ]);
 
-        watch(exchangeRate, async (val) => await localforage.setItem('exchangeRate', val));
-        watch(sheetUrl, async (val) => await localforage.setItem('sheetUrl', val));
-        watch(fireTargets, async (val) => await localforage.setItem('fireTargets', JSON.stringify(val)), { deep: true });
-
         const riskParams = ref({ rf: 1.5, beta: 1.0, rm: 10.0, sm: 15.0 });
         const quantStartDate = ref(''); 
         const dataFrequency = ref('Monthly'); 
@@ -602,31 +655,50 @@ createApp({
         const priceMap = ref({});
         const stockMeta = ref({});
 
-        async function loadDataFromLocal() {
+        // 🚀 v18.0: Supabase (PostgreSQL) + IndexedDB 企業級雙核資料流
+        async function loadDataFromCloud() {
+            isDbSyncing.value = true;
             try {
-                const savedRate = await localforage.getItem('exchangeRate');
-                if (savedRate !== null) exchangeRate.value = parseFloat(savedRate);
+                const { data, error } = await supabase.from('portfolio_db').select('*').eq('id', 1).single();
                 
-                const savedUrl = await localforage.getItem('sheetUrl');
-                if (savedUrl !== null) sheetUrl.value = savedUrl;
+                if (error && error.code !== 'PGRST116') throw error; 
 
-                const savedPrices = await localforage.getItem('priceMap');
-                if (savedPrices !== null) priceMap.value = JSON.parse(savedPrices);
+                if (data) {
+                    transactions.value = data.ledger_data || [];
+                    realHistoryData.value = data.history_data || [];
+                    stockMeta.value = data.stock_meta || {};
+                    
+                    if (data.settings) {
+                        if (data.settings.exchangeRate) exchangeRate.value = parseFloat(data.settings.exchangeRate);
+                        if (data.settings.sheetUrl) sheetUrl.value = data.settings.sheetUrl;
+                        if (data.settings.fireTargets) fireTargets.value = data.settings.fireTargets;
+                        if (data.settings.priceMap) priceMap.value = data.settings.priceMap;
+                    }
+                    console.log('✅ Supabase 雲端資料載入成功');
+                } else {
+                    console.log('⚠️ Supabase 尚未有資料，使用預設值或準備首次同步');
+                }
+
+                await localforage.setItem('ledgerData', JSON.stringify(transactions.value));
+                await localforage.setItem('historyData', JSON.stringify(realHistoryData.value));
+                await localforage.setItem('stockMeta', JSON.stringify(stockMeta.value));
+                await localforage.setItem('settings', JSON.stringify({
+                    exchangeRate: exchangeRate.value, sheetUrl: sheetUrl.value, fireTargets: fireTargets.value, priceMap: priceMap.value
+                }));
+
+            } catch (err) {
+                console.error("❌ Supabase 載入失敗，啟動 IndexedDB 離線救援模式", err);
+                transactions.value = JSON.parse(await localforage.getItem('ledgerData') || '[]');
+                realHistoryData.value = JSON.parse(await localforage.getItem('historyData') || '[]');
+                stockMeta.value = JSON.parse(await localforage.getItem('stockMeta') || '{}');
                 
-                const savedFire = await localforage.getItem('fireTargets');
-                if (savedFire !== null) fireTargets.value = JSON.parse(savedFire);
-
-                let localLedger = await localforage.getItem('ledgerData') || '[]';
-                let localHistory = await localforage.getItem('historyData') || '[]';
-                let localMeta = await localforage.getItem('stockMeta') || '{}';
-
-                transactions.value = JSON.parse(localLedger);
-                realHistoryData.value = JSON.parse(localHistory);
-                stockMeta.value = JSON.parse(localMeta);
-
-            } catch (error) {
-                console.error("載入 IndexedDB 發生錯誤", error);
+                const localSettings = JSON.parse(await localforage.getItem('settings') || '{}');
+                if(localSettings.exchangeRate) exchangeRate.value = localSettings.exchangeRate;
+                if(localSettings.sheetUrl) sheetUrl.value = localSettings.sheetUrl;
+                if(localSettings.fireTargets) fireTargets.value = localSettings.fireTargets;
+                if(localSettings.priceMap) priceMap.value = localSettings.priceMap;
             } finally {
+                isDbSyncing.value = false;
                 isAppReady.value = true; 
                 updateCharts();
             }
@@ -687,7 +759,7 @@ createApp({
                                 }
                             }
                         });
-                        await localforage.setItem('priceMap', JSON.stringify(priceMap.value));
+                        saveData();
                         lastUpdate.value = new Date().toLocaleTimeString();
                         isUpdating.value = false;
                         updateCharts();
@@ -722,7 +794,7 @@ createApp({
 
         const groupedHoldings = computed(() => {
             const groups = {};
-            let grandTotal = 0; // 新增：預先計算總市值避免循環依賴
+            let grandTotal = 0; 
 
             holdingsFlat.value.forEach(h => {
                 const rawPrice = priceMap.value[h.ticker];
@@ -731,7 +803,7 @@ createApp({
                 const currentPriceTwd = effectiveNativePrice * (isUSD ? exchangeRate.value : 1);
                 const mvTwd = h.shares * currentPriceTwd;
 
-                grandTotal += mvTwd; // 累加每一檔的市值到總市值
+                grandTotal += mvTwd; 
 
                 if (!groups[h.category]) groups[h.category] = { totalValue: 0, items: [] };
                 
@@ -754,16 +826,16 @@ createApp({
                groups[h.category].totalValue += mvTwd;
             });
 
-            // 再次迴圈分配總體權重
             for (const cat in groups) {
                 groups[cat].items.forEach(item => {
                     item.totalWeight = grandTotal > 0 ? (item.marketValueTwd / grandTotal) : 0;
-                    item.isOverweight = item.totalWeight > 0.15; // 判斷是否超過總資產的 15%
+                    item.isOverweight = item.totalWeight > 0.15; 
                 });
                 groups[cat].items.sort((a,b) => b.marketValueTwd - a.marketValueTwd);
             }
             return groups;
         });
+
         const categoryTotals = computed(() => {
             const totals = {};
             for(const cat in groupedHoldings.value) totals[cat] = groupedHoldings.value[cat].totalValue;
@@ -891,23 +963,31 @@ createApp({
         }, { deep: true, immediate: true });
 
         const aiInsights = computed(() => {
-            const insights = [];
             const val = totalStockValueTwd.value;
             const ret = parseFloat(totalStockReturnRate.value);
             const beta = parseFloat(portfolioStats.value.beta);
-            const sharpe = parseFloat(stats.value.sharpe);
             
-            // 情況A：完全沒庫存
-            if (val === 0) return [];
+            const sharpe = parseFloat(stats.value.sharpe);
+            const annRet = parseFloat(stats.value.annRet);
+            const annVol = parseFloat(stats.value.annVol);
+            const var95 = parseFloat(stats.value.var95);
+            
+            if (val === 0) return { summary: '尚無庫存資料，請先新增交易紀錄。', details: [] };
 
-            // 1. 績效與風控檢視
-            if (ret >= 20) {
-                insights.push({ icon: '🎉', color: 'text-green-400', title: '獲利豐厚', desc: `未實現報酬達 ${ret}%，表現強勢！建議可評估啟動動態停利 (Trailing Stop)，或將部分資金轉入低波動資產鎖住 Alpha。` });
-            } else if (ret <= -15) {
-                insights.push({ icon: '⚠️', color: 'text-red-400', title: '回撤警戒', desc: `目前虧損 ${ret}%，請重新 Due Diligence 檢視是否跌破原始投資理由。切忌盲目向下攤平，嚴格執行停損紀律。` });
+            const details = [];
+            let score = 100; 
+
+            if (!isNaN(annRet) && !isNaN(annVol)) {
+                details.push({ icon: '📊', color: 'text-blue-400', title: '量化表現總結', desc: `目前投組年化報酬率約 ${annRet.toFixed(2)}%，年化波動度 ${annVol.toFixed(2)}%。在 95% 信心水準下，單期最大潛在損失 (VaR) 約為 ${Math.abs(var95).toFixed(2)}%。` });
             }
 
-            // 2. 集中度風險 (偵測「總體資產」佔比超過 15% 的重倉標的)
+            if (ret >= 20) {
+                details.push({ icon: '🎉', color: 'text-green-400', title: '獲利豐厚', desc: `未實現報酬達 ${ret}%。建議可評估啟動動態停利 (Trailing Stop)，或將部分資金轉入低波動資產鎖住 Alpha。` });
+            } else if (ret <= -15) {
+                score -= 15;
+                details.push({ icon: '⚠️', color: 'text-red-400', title: '回撤警戒', desc: `目前虧損 ${ret}%，請嚴格執行停損紀律，確認是否跌破原始投資 Due Diligence 的護城河。` });
+            }
+
             let overweights = [];
             for (const cat in groupedHoldings.value) {
                 groupedHoldings.value[cat].items.forEach(item => {
@@ -915,65 +995,39 @@ createApp({
                 });
             }
             if (overweights.length > 0) {
-                insights.push({ icon: '🎯', color: 'text-orange-400', title: '集中度風險過高', desc: `[ ${overweights.join(', ')} ] 佔「總資產」權重過高 (>15%)。重倉若遇黑天鵝將重創淨值，強烈建議利用 MC 最佳化重新 Rebalance。` });
+                score -= 20;
+                details.push({ icon: '🎯', color: 'text-orange-400', title: '集中度風險過高', desc: `[ ${overweights.join(', ')} ] 佔總資產權重過高 (>15%)。強烈建議點擊下方【MC 最佳化】，透過蒙地卡羅模擬找出最大夏普權重並進行 Rebalance。` });
             }
 
-            // 3. 量化系統風險 (組合 Beta)
             if (beta > 1.2) {
-                insights.push({ icon: '🔥', color: 'text-red-400', title: '攻擊型配置 (High Beta)', desc: `組合 Beta 達 ${beta}。大盤多頭時具備強大爆發力，但若總經指標轉弱，回撤也會極深，請確保備足緊急預備金。` });
+                score -= 5;
+                details.push({ icon: '🔥', color: 'text-red-400', title: '攻擊型配置 (High Beta)', desc: `組合 Beta 達 ${beta}。大盤多頭時具備強大爆發力，但總經下行時回撤極深，請確保 Dry Powder 充足。` });
             } else if (beta > 0 && beta < 0.8) {
-                insights.push({ icon: '🛡️', color: 'text-blue-400', title: '防禦型配置 (Low Beta)', desc: `組合 Beta 僅 ${beta}。雖然抗跌能力極佳，但可能會錯失牛市行情。若你風險承受度夠高，建議適度提升適當曝險。` });
+                details.push({ icon: '🛡️', color: 'text-blue-400', title: '防禦型配置 (Low Beta)', desc: `組合 Beta 僅 ${beta}。抗跌能力極佳，但可能會錯失牛市行情。` });
             }
 
-            // 4. 資金效率 (Sharpe Ratio)
             if (!isNaN(sharpe)) {
                 if (sharpe < 0.8 && sharpe > 0) {
-                    insights.push({ icon: '📉', color: 'text-yellow-400', title: '風險報酬比不佳', desc: `夏普值 ${sharpe} 偏低。你承擔了過多波動，卻沒換來對應的報酬。建議立刻去「量化分析」跑一次 Monte Carlo 尋找最佳權重。` });
+                    score -= 15;
+                    details.push({ icon: '📉', color: 'text-yellow-400', title: '風險報酬比偏低', desc: `夏普值 ${sharpe} 偏低。你承擔了過多波動，卻沒換來對應的超額報酬。建議立刻跑一次 Monte Carlo 模型優化資產比例。` });
                 } else if (sharpe >= 1.5) {
-                    insights.push({ icon: '🌟', color: 'text-yellow-400', title: '卓越的資金效率', desc: `夏普值高達 ${sharpe}！目前的策略完美平衡了波動與超額報酬，請繼續保持目前的選股與擇時策略。` });
+                    score += 10;
+                    details.push({ icon: '🌟', color: 'text-yellow-400', title: '卓越的資金效率', desc: `夏普值高達 ${sharpe}！投組完美平衡了波動風險與超額報酬，請繼續保持。` });
                 }
             }
 
-            // 5. 避險部位 (Dry Powder)
-            const lowRiskRatio = riskTotals.value.Low / val;
-            if (val > 0 && lowRiskRatio < 0.05) {
-                 insights.push({ icon: '💸', color: 'text-blue-300', title: '避險緩衝不足', desc: `低風險資產不到 5%。建議保留適當比例的現金或短天期美債，做為股市大跌時逢低加碼的銀彈 (Dry Powder)。` });
+            if (details.length === 1 && score === 100) {
+                 details.push({ icon: '✅', color: 'text-green-400', title: '配置極度健康', desc: `目前的投資組合沒有觸發任何集中度與風險警報！波動度適中，資產分散且無明顯死角。` });
             }
 
-            // 👉 6. 連動 Monte Carlo 最佳化結果 (讀取 MC 運算結果並提出行動指令)
-            if (mcOptimal.value && mcOptimal.value.weights.length > 0) {
-                // 找出偏離最佳權重超過 5% 的標的，提示需要大動作調整
-                const majorBuys = mcOptimal.value.weights.filter(w => parseFloat(w.diff) >= 5).map(w => `${w.ticker} (+${w.diff}%)`);
-                const majorSells = mcOptimal.value.weights.filter(w => parseFloat(w.diff) <= -5).map(w => `${w.ticker} (${w.diff}%)`);
-                
-                let mcActionText = '';
-                if (majorBuys.length > 0) mcActionText += `優先加碼：${majorBuys.join(', ')}。 `;
-                if (majorSells.length > 0) mcActionText += `優先減碼：${majorSells.join(', ')}。 `;
-                
-                if (mcActionText !== '') {
-                    insights.push({ 
-                        icon: '🤖', 
-                        color: 'text-purple-400', 
-                        title: 'MC 最佳化執行指令', 
-                        desc: `根據剛才的蒙地卡羅模型 (最大夏普 ${mcOptimal.value.sharpe})，有部位嚴重偏離最佳化權重。建議：${mcActionText} (詳細金額請見 MC 面板)` 
-                    });
-                } else {
-                    insights.push({ 
-                        icon: '⚖️', 
-                        color: 'text-purple-400', 
-                        title: 'MC 權重已達最佳化', 
-                        desc: `根據蒙地卡羅運算結果，目前所有標的的權重偏離皆小於 5%，你的投組配置已經極度接近模型最佳解 (Max Sharpe)，暫無需調整。` 
-                    });
-                }
-            }
+            let summary = '';
+            if (score >= 95) summary = `狀態極佳 (評分: ${Math.min(score, 100)})：資產配置極度健康，資金效率與 Sharpe 表現卓越。`;
+            else if (score >= 75) summary = `狀態良好 (評分: ${score})：投組穩健，但可點此展開檢視 VaR 風險或部分部位之集中度。`;
+            else summary = `需要注意 (評分: ${score})：偵測到非系統性風險或低夏普值，強烈建議展開報告並執行 MC 最佳化。`;
 
-            // 👉 情況B (防呆)：如果上述風險完全沒觸發，代表現況配置極度優良
-            if (insights.length === 0 && val > 0) {
-                 insights.push({ icon: '✅', color: 'text-green-400', title: '配置極度健康', desc: `目前的投資組合沒有觸發任何風險警報！波動度與預期報酬皆在合理範圍內，資產分散且無明顯死角，請繼續保持這套紀律。` });
-            }
-
-            return insights;
+            return { summary, details };
         });
+
         function addFireTarget() {
             const last = fireTargets.value[fireTargets.value.length - 1];
             fireTargets.value.push({
@@ -981,6 +1035,7 @@ createApp({
                 year: last ? last.year + 5 : new Date().getFullYear() + 5,
                 amount: last ? last.amount * 1.5 : 5000000
             });
+            saveData();
         }
 
         const activeFireStageIndex = computed(() => {
@@ -1003,7 +1058,7 @@ createApp({
         async function manualUpdate(stock) { 
             if(stock.manualPrice) { 
                 priceMap.value[stock.ticker] = stock.manualPrice; 
-                await localforage.setItem('priceMap', JSON.stringify(priceMap.value)); 
+                saveData(); 
             } 
         }
         
@@ -1026,10 +1081,41 @@ createApp({
             } 
         }
 
+        let syncTimer = null;
         async function saveData() { 
             await localforage.setItem('ledgerData', JSON.stringify(transactions.value)); 
             await localforage.setItem('historyData', JSON.stringify(realHistoryData.value));
             await localforage.setItem('stockMeta', JSON.stringify(stockMeta.value));
+            await localforage.setItem('settings', JSON.stringify({
+                exchangeRate: exchangeRate.value, sheetUrl: sheetUrl.value, fireTargets: fireTargets.value, priceMap: priceMap.value
+            }));
+
+            isDbSyncing.value = true;
+            if (syncTimer) clearTimeout(syncTimer);
+            
+            syncTimer = setTimeout(async () => {
+                try {
+                    const { error } = await supabase.from('portfolio_db').upsert({
+                        id: 1, 
+                        ledger_data: transactions.value,
+                        history_data: realHistoryData.value,
+                        stock_meta: stockMeta.value,
+                        settings: {
+                            exchangeRate: exchangeRate.value,
+                            sheetUrl: sheetUrl.value,
+                            fireTargets: fireTargets.value,
+                            priceMap: priceMap.value
+                        }
+                    }, { onConflict: 'id' }); 
+
+                    if (error) throw error;
+                    console.log("🚀 Supabase 雲端同步完成 (Debounced Sync)");
+                } catch (e) {
+                    console.error("❌ Supabase 同步失敗", e);
+                } finally {
+                    isDbSyncing.value = false;
+                }
+            }, 1500); 
         }
 
         function exportAll() { const data = { ledger: transactions.value, history: realHistoryData.value, stockMeta: stockMeta.value }; const link = document.createElement("a"); link.href = URL.createObjectURL(new Blob([JSON.stringify(data)], {type: "application/json"})); link.download = "backup.json"; link.click(); }
@@ -1038,7 +1124,7 @@ createApp({
             reader.onload = (e) => {
                 const data = JSON.parse(e.target.result);
                 transactions.value = data.ledger; realHistoryData.value = data.history; if(data.stockMeta) stockMeta.value = data.stockMeta;
-                saveData(); updateCharts(); alert('匯入成功，已同步至本機');
+                saveData(); updateCharts(); alert('匯入成功，已同步至雲端');
             }; reader.readAsText(file);
         }
         
@@ -1327,7 +1413,7 @@ createApp({
                 if (chartFire) {
                     const targets = fireTargets.value;
                     const maxYear = targets.length > 0 ? Math.max(...targets.map(t => t.year)) : 2052;
-                    const startYear = 2025;
+                    const startYear = 2028;
                     
                     const labels = [];
                     for (let y = startYear; y <= maxYear; y++) labels.push(y);
@@ -1450,7 +1536,7 @@ createApp({
         }
         
         onMounted(() => { 
-            loadDataFromLocal(); 
+            loadDataFromCloud(); 
         });
         
         watch(currentTab, () => { 
@@ -1468,8 +1554,8 @@ createApp({
             removeTransaction, removeHistoryByDate, manualUpdate, updateMeta, fetchPrices, 
             exportAll, importData, getTypeColor, getCategoryColorCode, formatNumber, formatPercent, 
             lastUpdate, displayHistory, enrichedHistory, quantStartDate, dataFrequency, 
-            snapshotToHistory, snapshotDate,  
-            isAppReady, showMCModal, mcOptimal, openMonteCarlo, aiInsights, quantDays,
+            snapshotToHistory, snapshotDate, isDbSyncing, 
+            isAppReady, showMCModal, mcOptimal, openMonteCarlo, aiInsights, isAiExpanded, quantDays,
             fireTargets, activeFireStageIndex, activeFireTarget, fireProgress, updateCharts, addFireTarget
         };
     }
