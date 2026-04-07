@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>股票紀錄 v17.7 (FIRE Dashboard)</title>
+    <title>股票紀錄 v17.8 (Milestone FIRE)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -56,7 +56,7 @@
         <div class="flex items-center gap-2 md:gap-6 flex-1 overflow-hidden">
             <h1 class="font-bold text-lg md:text-xl tracking-wide flex items-center gap-2 text-white shrink-0">
                 <i class="fas fa-database text-yellow-500"></i> <span class="hidden sm:inline">Stock Portfolio</span>
-                <span v-if="!isSimMode" class="text-xs bg-yellow-600 px-2 py-0.5 rounded text-black font-bold">v17.7</span>
+                <span v-if="!isSimMode" class="text-xs bg-yellow-600 px-2 py-0.5 rounded text-black font-bold">v17.8</span>
                 <span v-else class="text-xs bg-red-600 px-2 py-0.5 rounded text-white font-bold animate-pulse">SIM</span>
                 <i v-if="isDbSyncing" class="fas fa-cloud-upload-alt animate-bounce text-blue-400 text-sm ml-1" title="雲端同步中"></i>
             </h1>
@@ -64,6 +64,11 @@
             <div class="hidden lg:flex items-center gap-3 bg-slate-800 py-1 px-3 rounded-lg border border-slate-700">
                 <span class="text-gray-400 text-xs">USD/TWD:</span>
                 <input v-model.number="exchangeRate" type="number" step="0.01" class="w-16 bg-transparent text-center font-mono font-bold text-green-400 focus:outline-none border-b border-gray-600">
+            </div>
+
+            <div class="hidden md:flex items-center gap-2 bg-slate-800 py-1 px-3 rounded-lg border border-slate-700 w-80">
+                <i class="fab fa-google text-green-500"></i>
+                <input v-model="sheetUrl" placeholder="貼上 Google Sheet 網址" class="w-full bg-transparent text-xs text-white focus:outline-none placeholder-gray-500">
             </div>
 
             <nav class="flex gap-4 md:gap-6 font-medium ml-2 md:ml-4 overflow-x-auto whitespace-nowrap no-scrollbar flex-1">
@@ -128,28 +133,53 @@
                     </div>
                 </div>
 
-                <div class="glass p-5 rounded-2xl border-l-4 border-red-500 relative overflow-hidden">
-                    <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
-                        <div>
+                <div class="glass p-5 md:p-6 rounded-2xl border-l-4 border-red-500 relative overflow-hidden mt-6 mb-6">
+                    <div class="flex flex-col lg:flex-row justify-between items-start lg:items-end gap-4 mb-4">
+                        <div class="shrink-0">
                             <h3 class="text-lg font-bold text-white flex items-center gap-2">
-                                <i class="fas fa-fire text-red-500"></i> FIRE 財務自由進度
+                                <i class="fas fa-fire text-red-500"></i> FIRE 階段性攻堅進度
                             </h3>
-                            <div class="text-xs text-gray-400 mt-1">目前淨值：NT$ {{ formatNumber(totalStockValueTwd) }} / 目標水位：NT$ {{ formatNumber(fireTarget) }}</div>
+                            <div class="text-xs text-gray-400 mt-2">
+                                目前淨值：NT$ {{ formatNumber(totalStockValueTwd) }} <br class="md:hidden">
+                                <span class="text-red-400 font-bold ml-0 md:ml-2">下一階段目標：NT$ {{ formatNumber(activeFireTarget.amount) }}</span>
+                            </div>
                         </div>
-                        <div class="flex items-center gap-2 bg-gray-900/50 p-2 rounded-lg border border-gray-700/50">
-                            <span class="text-[10px] text-gray-400 font-bold uppercase">自訂目標 (TWD):</span>
-                            <input v-model.number="fireTarget" type="number" class="w-32 bg-gray-800 text-white border border-gray-600 text-xs rounded px-2 py-1 text-right focus:border-red-500 outline-none font-mono" placeholder="輸入目標金額">
+                        
+                        <div class="flex flex-wrap gap-2 w-full lg:w-auto mt-2 lg:mt-0 items-end">
+                            <div v-for="(stage, index) in fireTargets" :key="index" 
+                                 class="flex flex-col gap-1 bg-gray-900/50 p-2 rounded-lg border transition-colors relative group"
+                                 :class="activeFireStageIndex === index ? 'border-red-500 bg-red-900/30 shadow-[0_0_10px_rgba(239,68,68,0.2)]' : 'border-gray-700/50 opacity-70 hover:opacity-100'">
+                                
+                                <button @click="fireTargets.splice(index, 1)" class="absolute -top-2 -right-2 bg-red-900 hover:bg-red-500 text-white rounded-full w-4 h-4 flex items-center justify-center text-[10px] opacity-0 group-hover:opacity-100 transition-opacity z-10" title="刪除此階段">
+                                    <i class="fas fa-times"></i>
+                                </button>
+
+                                <div class="flex items-center gap-1 text-[10px] text-gray-400 font-bold">
+                                    <input v-model.number="stage.age" type="number" class="w-7 bg-transparent text-white text-center border-b border-gray-600 focus:border-red-400 outline-none transition-colors" placeholder="年齡">歲
+                                    (<input v-model.number="stage.year" type="number" class="w-10 bg-transparent text-white text-center border-b border-gray-600 focus:border-red-400 outline-none transition-colors" placeholder="年份">)
+                                </div>
+                                
+                                <div class="flex items-center gap-1">
+                                    <span class="text-gray-500 text-[10px]">$</span>
+                                    <input v-model.number="stage.amount" type="number" class="w-16 md:w-20 bg-transparent text-white text-sm font-mono focus:outline-none border-b border-gray-600 focus:border-red-400 transition-colors" placeholder="目標金額">
+                                </div>
+                            </div>
+
+                            <button @click="addFireTarget" class="h-[52px] w-8 border border-dashed border-gray-600 rounded-lg flex items-center justify-center text-gray-500 hover:text-red-400 hover:border-red-400 transition-colors bg-gray-900/30" title="新增一個 FIRE 階段">
+                                <i class="fas fa-plus"></i>
+                            </button>
                         </div>
                     </div>
-                    <div class="relative pt-1">
+                    
+                    <div class="relative pt-2">
                         <div class="flex mb-2 items-center justify-between">
                             <div>
-                                <span class="text-xs font-bold inline-block py-1 px-2 uppercase rounded-md text-red-200 bg-red-900/50 border border-red-800">
-                                    達成率
+                                <span class="text-xs font-bold inline-block py-1 px-2 uppercase rounded-md text-red-200 bg-red-900/50 border border-red-800 shadow-sm">
+                                    攻克 {{ activeFireTarget.age }} 歲目標達成率
                                 </span>
                             </div>
                             <div class="text-right">
-                                <span class="text-lg font-bold inline-block text-red-400 font-mono tracking-wider">
+                                <span class="text-xl font-bold inline-block text-red-400 font-mono tracking-wider" style="text-shadow: 0 0 10px rgba(248, 113, 113, 0.5);">
                                     {{ fireProgress.toFixed(2) }}%
                                 </span>
                             </div>
@@ -193,7 +223,7 @@
                     <div class="glass p-5 rounded-2xl col-span-2 flex flex-col">
                         <div class="flex justify-between items-center mb-4 border-l-4 border-emerald-500 pl-3">
                             <h4 class="text-white font-bold">淨值成長趨勢 (NAV)</h4>
-                            </div>
+                        </div>
                         <div class="flex-1 relative">
                             <canvas id="historyChart"></canvas>
                              <div v-if="displayHistory.length < 2" class="absolute inset-0 flex items-center justify-center text-gray-500 text-xs bg-gray-900/50 rounded-lg">
@@ -548,11 +578,18 @@ createApp({
         
         const exchangeRate = ref(32.5);
         const sheetUrl = ref('');
-        const fireTarget = ref(10000000); 
+
+        const fireTargets = ref([
+            { age: 28, year: 2032, amount: 5000000 },
+            { age: 33, year: 2037, amount: 10000000 },
+            { age: 38, year: 2042, amount: 20000000 },
+            { age: 43, year: 2047, amount: 35000000 },
+            { age: 48, year: 2052, amount: 50000000 }
+        ]);
 
         watch(exchangeRate, async (val) => await localforage.setItem('exchangeRate', val));
         watch(sheetUrl, async (val) => await localforage.setItem('sheetUrl', val));
-        watch(fireTarget, async (val) => await localforage.setItem('fireTarget', val));
+        watch(fireTargets, async (val) => await localforage.setItem('fireTargets', JSON.stringify(val)), { deep: true });
 
         const riskParams = ref({ rf: 1.5, beta: 1.0, rm: 10.0, sm: 15.0 });
         const quantStartDate = ref(''); 
@@ -577,8 +614,8 @@ createApp({
                 const savedPrices = await localforage.getItem('priceMap');
                 if (savedPrices !== null) priceMap.value = JSON.parse(savedPrices);
                 
-                const savedFire = await localforage.getItem('fireTarget');
-                if (savedFire !== null) fireTarget.value = parseFloat(savedFire);
+                const savedFire = await localforage.getItem('fireTargets');
+                if (savedFire !== null) fireTargets.value = JSON.parse(savedFire);
 
                 const res = await fetch(gasApiUrl);
                 const data = await res.json();
@@ -909,10 +946,30 @@ createApp({
             return insights;
         });
 
-        // 👉 計算 FIRE 達成率
+        function addFireTarget() {
+            const last = fireTargets.value[fireTargets.value.length - 1];
+            fireTargets.value.push({
+                age: last ? last.age + 5 : 30,
+                year: last ? last.year + 5 : new Date().getFullYear() + 5,
+                amount: last ? last.amount * 1.5 : 5000000
+            });
+        }
+
+        const activeFireStageIndex = computed(() => {
+            if (fireTargets.value.length === 0) return -1;
+            const val = totalStockValueTwd.value;
+            const index = fireTargets.value.findIndex(t => val < t.amount);
+            return index === -1 ? fireTargets.value.length - 1 : index;
+        });
+
+        const activeFireTarget = computed(() => {
+            if (fireTargets.value.length === 0) return { age: '?', year: '?', amount: 0 };
+            return fireTargets.value[activeFireStageIndex.value] || { age: '?', year: '?', amount: 0 };
+        });
+
         const fireProgress = computed(() => {
-            if (fireTarget.value <= 0) return 0;
-            return (totalStockValueTwd.value / fireTarget.value) * 100;
+            if (!activeFireTarget.value || activeFireTarget.value.amount <= 0) return 0;
+            return (totalStockValueTwd.value / activeFireTarget.value.amount) * 100;
         });
 
         async function manualUpdate(stock) { 
@@ -1238,7 +1295,6 @@ createApp({
                     chartHist.data.datasets[0] = { label: 'NAV', data: sorted.map(h=>h.assets), borderColor: '#3b82f6', fill: true, backgroundColor: 'rgba(59,130,246,0.1)', tension: 0.1 };
                     chartHist.data.datasets[1] = { label: 'Cost', data: sorted.map(h=>h.cost), borderColor: '#10b981', borderDash:[5,5], tension: 0.1 };
                     
-                    // 確保沒有殘留的舊水線
                     if (chartHist.data.datasets.length > 2) {
                         chartHist.data.datasets.splice(2);
                     }
@@ -1340,9 +1396,8 @@ createApp({
             nextTick(() => { updateCharts(); });
         });
 
-        watch([exchangeRate, sheetUrl, isSimMode, riskParams, quantStartDate, dataFrequency, fireTarget], () => updateCharts(), {deep:true});
+        watch([exchangeRate, sheetUrl, isSimMode, riskParams, quantStartDate, dataFrequency, fireTargets], () => updateCharts(), {deep:true});
 
-        // 🚀 核心修復：所有在 HTML 用到的變數與函數都在這裡！保證沒有重複！
         return { 
             currentTab, showHistoryModal, isUpdating, isSimMode, toggleSimMode, 
             transactions, groupedHoldings, categoryTotals, riskTotals, portfolioStats, 
@@ -1354,7 +1409,7 @@ createApp({
             lastUpdate, displayHistory, enrichedHistory, quantStartDate, dataFrequency, 
             snapshotToHistory, snapshotDate, isDbSyncing, 
             isAppReady, showMCModal, mcOptimal, openMonteCarlo, aiInsights, quantDays,
-            fireTarget, fireProgress, updateCharts
+            fireTargets, activeFireStageIndex, activeFireTarget, fireProgress, updateCharts, addFireTarget
         };
     }
 }).mount('#app');
