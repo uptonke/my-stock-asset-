@@ -160,6 +160,10 @@
                     <div class="glass p-5 rounded-2xl col-span-2 flex flex-col">
                         <div class="flex justify-between items-center mb-4 border-l-4 border-emerald-500 pl-3">
                             <h4 class="text-white font-bold">淨值成長趨勢 (NAV)</h4>
+                            <div class="flex items-center gap-2">
+                                <span class="text-[10px] text-gray-400 font-bold uppercase">FIRE Target:</span>
+                                <input v-model.number="fireTarget" type="number" class="w-24 bg-gray-800 text-white border border-gray-600 text-xs rounded px-2 py-1 text-right focus:border-yellow-500 outline-none" placeholder="目標金額">
+                            </div>
                         </div>
                         <div class="flex-1 relative">
                             <canvas id="historyChart"></canvas>
@@ -525,6 +529,9 @@ createApp({
         const quantStartDate = ref(''); 
         const dataFrequency = ref('Monthly'); 
         const snapshotDate = ref(new Date().toISOString().split('T')[0]); 
+        // 👉 新增：FIRE 目標水位狀態與監聽
+        const fireTarget = ref(10000000); 
+        watch(fireTarget, async (val) => await localforage.setItem('fireTarget', val)); 
 
         const transactions = ref([]);
         const realHistoryData = ref([]);
@@ -543,8 +550,9 @@ createApp({
                 const savedUrl = await localforage.getItem('sheetUrl');
                 if (savedUrl !== null) sheetUrl.value = savedUrl;
 
-                const savedPrices = await localforage.getItem('priceMap');
-                if (savedPrices !== null) priceMap.value = JSON.parse(savedPrices);
+                // 👉 新增：讀取 FIRE 目標
+                const savedFire = await localforage.getItem('fireTarget');
+                if (savedFire !== null) fireTarget.value = parseFloat(savedFire);
 
                 // 2. 嘗試呼叫雲端 API
                 const res = await fetch(gasApiUrl);
@@ -1199,8 +1207,24 @@ createApp({
                 if (chartHist) {
                     const history = displayHistory.value; const sorted = [...history].sort((a,b)=>new Date(a.date)-new Date(b.date));
                     chartHist.data.labels = sorted.map(h=>h.date);
-                    chartHist.data.datasets[0] = { label: 'NAV', data: sorted.map(h=>h.assets), borderColor: '#3b82f6', fill: true, backgroundColor: 'rgba(59,130,246,0.1)' };
-                    chartHist.data.datasets[1] = { label: 'Cost', data: sorted.map(h=>h.cost), borderColor: '#10b981', borderDash:[5,5] };
+                    chartHist.data.datasets[0] = { label: 'NAV', data: sorted.map(h=>h.assets), borderColor: '#3b82f6', fill: true, backgroundColor: 'rgba(59,130,246,0.1)', tension: 0.1 };
+                    chartHist.data.datasets[1] = { label: 'Cost', data: sorted.map(h=>h.cost), borderColor: '#10b981', borderDash:[5,5], tension: 0.1 };
+                    
+                    // 👉 新增：動態繪製 FIRE 水位線 (黃色虛線)
+                    if (fireTarget.value > 0) {
+                        chartHist.data.datasets[2] = { 
+                            label: 'FIRE Target', 
+                            data: Array(sorted.length).fill(fireTarget.value), 
+                            borderColor: '#fbbf24', 
+                            borderWidth: 2, 
+                            borderDash: [8, 4], 
+                            pointRadius: 0,
+                            fill: false 
+                        };
+                    } else if (chartHist.data.datasets.length > 2) {
+                        chartHist.data.datasets.pop(); // 數值若清空則移除線段
+                    }
+                    
                     chartHist.update();
                 }
 
@@ -1299,7 +1323,7 @@ createApp({
             nextTick(() => { updateCharts(); });
         });
 
-        watch([exchangeRate, sheetUrl, isSimMode, riskParams, quantStartDate, dataFrequency], () => updateCharts(), {deep:true});
+        watch([exchangeRate, sheetUrl, isSimMode, riskParams, quantStartDate, dataFrequency, fireTarget], () => updateCharts(), {deep:true});
 
         return { 
             currentTab, showHistoryModal, isUpdating, isSimMode, toggleSimMode, 
@@ -1312,6 +1336,8 @@ createApp({
             lastUpdate, displayHistory, enrichedHistory, quantStartDate, dataFrequency, 
             snapshotToHistory, snapshotDate, isDbSyncing, 
             isAppReady, showMCModal, mcOptimal, openMonteCarlo, aiInsights, quantDays
+            isAppReady, showMCModal, mcOptimal, openMonteCarlo, aiInsights, quantDays,
+            fireTarget
         };
     }
 }).mount('#app');
