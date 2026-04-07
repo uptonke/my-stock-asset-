@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>股票紀錄 v17.4 (IndexedDB Engine)</title>
+    <title>股票紀錄 v17.5 (FIRE & Quant Pro)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -52,7 +52,7 @@
         <div class="flex items-center gap-6">
             <h1 class="font-bold text-xl tracking-wide flex items-center gap-2 text-white">
                 <i class="fas fa-database text-yellow-500"></i> Stock Portfolio
-                <span v-if="!isSimMode" class="text-xs bg-yellow-600 px-2 py-0.5 rounded text-black font-bold">v17.4</span>
+                <span v-if="!isSimMode" class="text-xs bg-yellow-600 px-2 py-0.5 rounded text-black font-bold">v17.5</span>
                 <span v-else class="text-xs bg-red-600 px-2 py-0.5 rounded text-white font-bold animate-pulse">SIMULATION</span>
                 <i v-if="isDbSyncing" class="fas fa-cloud-upload-alt animate-bounce text-blue-400 text-sm ml-2" title="雲端同步中"></i>
             </h1>
@@ -517,21 +517,18 @@ createApp({
         const isSimMode = ref(false);
         const lastUpdate = ref(null);
         
-        // 👉 初始化時預設為空，等待 IndexedDB 載入
         const exchangeRate = ref(32.5);
         const sheetUrl = ref('');
+        const fireTarget = ref(10000000); // 👉 FIRE 水位線預設 1000 萬
 
-        // 👉 當數值變更時寫入 IndexedDB
         watch(exchangeRate, async (val) => await localforage.setItem('exchangeRate', val));
         watch(sheetUrl, async (val) => await localforage.setItem('sheetUrl', val));
+        watch(fireTarget, async (val) => await localforage.setItem('fireTarget', val));
 
         const riskParams = ref({ rf: 1.5, beta: 1.0, rm: 10.0, sm: 15.0 });
         const quantStartDate = ref(''); 
         const dataFrequency = ref('Monthly'); 
         const snapshotDate = ref(new Date().toISOString().split('T')[0]); 
-        // 👉 新增：FIRE 目標水位狀態與監聽
-        const fireTarget = ref(10000000); 
-        watch(fireTarget, async (val) => await localforage.setItem('fireTarget', val)); 
 
         const transactions = ref([]);
         const realHistoryData = ref([]);
@@ -539,26 +536,24 @@ createApp({
         const priceMap = ref({});
         const stockMeta = ref({});
 
-        // 🚀 v17.4 IndexedDB + Cloud 雙核引擎 (非同步加載)
         async function loadDataFromCloud() {
             isDbSyncing.value = true;
             try {
-                // 1. 先讀取單一設定值
                 const savedRate = await localforage.getItem('exchangeRate');
                 if (savedRate !== null) exchangeRate.value = parseFloat(savedRate);
                 
                 const savedUrl = await localforage.getItem('sheetUrl');
                 if (savedUrl !== null) sheetUrl.value = savedUrl;
 
-                // 👉 新增：讀取 FIRE 目標
+                const savedPrices = await localforage.getItem('priceMap');
+                if (savedPrices !== null) priceMap.value = JSON.parse(savedPrices);
+                
                 const savedFire = await localforage.getItem('fireTarget');
                 if (savedFire !== null) fireTarget.value = parseFloat(savedFire);
 
-                // 2. 嘗試呼叫雲端 API
                 const res = await fetch(gasApiUrl);
                 const data = await res.json();
                 
-                // 3. 雲端資料檢查，若空則拿本地 IndexedDB 補位
                 let localLedger = await localforage.getItem('ledgerData') || '[]';
                 let localHistory = await localforage.getItem('historyData') || '[]';
                 let localMeta = await localforage.getItem('stockMeta') || '{}';
@@ -567,20 +562,18 @@ createApp({
                 realHistoryData.value = JSON.parse(data.historyData === '[]' ? localHistory : data.historyData);
                 stockMeta.value = JSON.parse(data.stockMeta === '{}' ? localMeta : data.stockMeta);
                 
-                // 4. 同步更新回本地 IndexedDB
                 await localforage.setItem('ledgerData', JSON.stringify(transactions.value));
                 await localforage.setItem('historyData', JSON.stringify(realHistoryData.value));
                 await localforage.setItem('stockMeta', JSON.stringify(stockMeta.value));
 
             } catch (error) {
-                // 若雲端掛了或是本機開發 (CORS)，全面切換至 IndexedDB 離線模式
                 console.error("API 呼叫失敗，啟用 IndexedDB 離線快取", error);
                 transactions.value = JSON.parse(await localforage.getItem('ledgerData') || '[]');
                 realHistoryData.value = JSON.parse(await localforage.getItem('historyData') || '[]');
                 stockMeta.value = JSON.parse(await localforage.getItem('stockMeta') || '{}');
             } finally {
                 isDbSyncing.value = false;
-                isAppReady.value = true; // 👉 讀取完畢解鎖 UI
+                isAppReady.value = true; 
                 updateCharts();
             }
         }
@@ -1204,13 +1197,13 @@ createApp({
                     chartAlloc.update();
                 }
                 
+                // 👉 FIRE 水位線圖表更新邏輯
                 if (chartHist) {
                     const history = displayHistory.value; const sorted = [...history].sort((a,b)=>new Date(a.date)-new Date(b.date));
                     chartHist.data.labels = sorted.map(h=>h.date);
                     chartHist.data.datasets[0] = { label: 'NAV', data: sorted.map(h=>h.assets), borderColor: '#3b82f6', fill: true, backgroundColor: 'rgba(59,130,246,0.1)', tension: 0.1 };
                     chartHist.data.datasets[1] = { label: 'Cost', data: sorted.map(h=>h.cost), borderColor: '#10b981', borderDash:[5,5], tension: 0.1 };
                     
-                    // 👉 新增：動態繪製 FIRE 水位線 (黃色虛線)
                     if (fireTarget.value > 0) {
                         chartHist.data.datasets[2] = { 
                             label: 'FIRE Target', 
@@ -1222,7 +1215,7 @@ createApp({
                             fill: false 
                         };
                     } else if (chartHist.data.datasets.length > 2) {
-                        chartHist.data.datasets.pop(); // 數值若清空則移除線段
+                        chartHist.data.datasets.pop();
                     }
                     
                     chartHist.update();
@@ -1323,8 +1316,10 @@ createApp({
             nextTick(() => { updateCharts(); });
         });
 
+        // 👉 將 fireTarget 納入 Watch 陣列，數字更改就會自動重繪水線
         watch([exchangeRate, sheetUrl, isSimMode, riskParams, quantStartDate, dataFrequency, fireTarget], () => updateCharts(), {deep:true});
 
+        // 🚀 最終確認所有變數 Return
         return { 
             currentTab, showHistoryModal, isUpdating, isSimMode, toggleSimMode, 
             transactions, groupedHoldings, categoryTotals, riskTotals, portfolioStats, 
@@ -1335,7 +1330,6 @@ createApp({
             exportAll, importData, getTypeColor, getCategoryColorCode, formatNumber, formatPercent, 
             lastUpdate, displayHistory, enrichedHistory, quantStartDate, dataFrequency, 
             snapshotToHistory, snapshotDate, isDbSyncing, 
-            isAppReady, showMCModal, mcOptimal, openMonteCarlo, aiInsights, quantDays
             isAppReady, showMCModal, mcOptimal, openMonteCarlo, aiInsights, quantDays,
             fireTarget
         };
