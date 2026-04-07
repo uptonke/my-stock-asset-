@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>股票紀錄 v17.9 (Offline FIRE Chart)</title>
+    <title>股票紀錄 v18 (Offline FIRE Chart)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -897,6 +897,7 @@ createApp({
             const beta = parseFloat(portfolioStats.value.beta);
             const sharpe = parseFloat(stats.value.sharpe);
             
+            // 情況A：完全沒庫存
             if (val === 0) return [];
 
             if (ret >= 20) {
@@ -905,14 +906,15 @@ createApp({
                 insights.push({ icon: '⚠️', color: 'text-red-400', title: '回撤警戒', desc: `目前虧損 ${ret}%，請重新 Due Diligence 檢視是否跌破原始投資理由。切忌盲目向下攤平，嚴格執行停損紀律。` });
             }
 
+            // 更新為：偵測「總體資產」佔比超過 15% 的重倉標的
             let overweights = [];
             for (const cat in groupedHoldings.value) {
                 groupedHoldings.value[cat].items.forEach(item => {
-                    if (item.categoryWeight > 0.15) overweights.push(item.ticker);
+                    if (item.totalWeight > 0.15) overweights.push(item.ticker);
                 });
             }
             if (overweights.length > 0) {
-                insights.push({ icon: '🎯', color: 'text-orange-400', title: '非系統性風險過高', desc: `[ ${overweights.join(', ')} ] 佔單一類別權重過高 (>15%)。重倉若遇黑天鵝將重創淨值，強烈建議利用 MC 最佳化重新 Rebalance。` });
+                insights.push({ icon: '🎯', color: 'text-orange-400', title: '集中度風險過高', desc: `[ ${overweights.join(', ')} ] 佔「總資產」權重過高 (>15%)。重倉若遇黑天鵝將重創淨值，強烈建議利用 MC 最佳化重新 Rebalance。` });
             }
 
             if (beta > 1.2) {
@@ -934,9 +936,13 @@ createApp({
                  insights.push({ icon: '💸', color: 'text-blue-300', title: '避險緩衝不足', desc: `低風險資產不到 5%。建議保留適當比例的現金或短天期美債，做為股市大跌時逢低加碼的銀彈 (Dry Powder)。` });
             }
 
+            // 👉 情況B (防呆)：如果上述風險完全沒觸發，代表配置極度優良
+            if (insights.length === 0 && val > 0) {
+                 insights.push({ icon: '✅', color: 'text-green-400', title: '配置極度健康', desc: `目前的投資組合沒有觸發任何風險警報！波動度與預期報酬皆在合理範圍內，資產分散且無明顯死角，請繼續保持這套紀律。` });
+            }
+
             return insights;
         });
-
         function addFireTarget() {
             const last = fireTargets.value[fireTargets.value.length - 1];
             fireTargets.value.push({
@@ -1290,7 +1296,7 @@ createApp({
                 if (chartFire) {
                     const targets = fireTargets.value;
                     const maxYear = targets.length > 0 ? Math.max(...targets.map(t => t.year)) : 2052;
-                    const startYear = 2028;
+                    const startYear = 2025;
                     
                     const labels = [];
                     for (let y = startYear; y <= maxYear; y++) labels.push(y);
