@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>股票紀錄 v17.8 (Milestone FIRE)</title>
+    <title>股票紀錄 v17.9 (Offline FIRE Chart)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -56,9 +56,8 @@
         <div class="flex items-center gap-2 md:gap-6 flex-1 overflow-hidden">
             <h1 class="font-bold text-lg md:text-xl tracking-wide flex items-center gap-2 text-white shrink-0">
                 <i class="fas fa-database text-yellow-500"></i> <span class="hidden sm:inline">Stock Portfolio</span>
-                <span v-if="!isSimMode" class="text-xs bg-yellow-600 px-2 py-0.5 rounded text-black font-bold">v17.8</span>
+                <span v-if="!isSimMode" class="text-xs bg-yellow-600 px-2 py-0.5 rounded text-black font-bold">v17.9</span>
                 <span v-else class="text-xs bg-red-600 px-2 py-0.5 rounded text-white font-bold animate-pulse">SIM</span>
-                <i v-if="isDbSyncing" class="fas fa-cloud-upload-alt animate-bounce text-blue-400 text-sm ml-1" title="雲端同步中"></i>
             </h1>
             
             <div class="hidden lg:flex items-center gap-3 bg-slate-800 py-1 px-3 rounded-lg border border-slate-700">
@@ -189,6 +188,10 @@
                                 <div class="absolute top-0 left-0 bottom-0 right-0 bg-white opacity-20" style="animation: pulse 2s infinite;"></div>
                             </div>
                         </div>
+                    </div>
+
+                    <div class="h-64 mt-6 relative border-t border-gray-700/50 pt-6">
+                        <canvas id="fireChart"></canvas>
                     </div>
                 </div>
 
@@ -568,12 +571,9 @@ createApp({
         const mcOptimal = ref(null); 
         const currentTab = ref('summary');
         
-        const gasApiUrl = 'https://script.google.com/macros/s/AKfycbwdQa4NWGh8nJ-pmVKWqGdwmZcWxGQvFAtlxbfQyJOWyB9ObIGNvC_rvTjf7tPupf9a/exec'; 
-        const isDbSyncing = ref(false); 
-
-        const showHistoryModal = ref(false);
         const isUpdating = ref(false);
         const isSimMode = ref(false);
+        const showHistoryModal = ref(false);
         const lastUpdate = ref(null);
         
         const exchangeRate = ref(32.5);
@@ -602,8 +602,7 @@ createApp({
         const priceMap = ref({});
         const stockMeta = ref({});
 
-        async function loadDataFromCloud() {
-            isDbSyncing.value = true;
+        async function loadDataFromLocal() {
             try {
                 const savedRate = await localforage.getItem('exchangeRate');
                 if (savedRate !== null) exchangeRate.value = parseFloat(savedRate);
@@ -617,28 +616,17 @@ createApp({
                 const savedFire = await localforage.getItem('fireTargets');
                 if (savedFire !== null) fireTargets.value = JSON.parse(savedFire);
 
-                const res = await fetch(gasApiUrl);
-                const data = await res.json();
-                
                 let localLedger = await localforage.getItem('ledgerData') || '[]';
                 let localHistory = await localforage.getItem('historyData') || '[]';
                 let localMeta = await localforage.getItem('stockMeta') || '{}';
 
-                transactions.value = JSON.parse(data.ledgerData === '[]' ? localLedger : data.ledgerData);
-                realHistoryData.value = JSON.parse(data.historyData === '[]' ? localHistory : data.historyData);
-                stockMeta.value = JSON.parse(data.stockMeta === '{}' ? localMeta : data.stockMeta);
-                
-                await localforage.setItem('ledgerData', JSON.stringify(transactions.value));
-                await localforage.setItem('historyData', JSON.stringify(realHistoryData.value));
-                await localforage.setItem('stockMeta', JSON.stringify(stockMeta.value));
+                transactions.value = JSON.parse(localLedger);
+                realHistoryData.value = JSON.parse(localHistory);
+                stockMeta.value = JSON.parse(localMeta);
 
             } catch (error) {
-                console.error("API 呼叫失敗，啟用 IndexedDB 離線快取", error);
-                transactions.value = JSON.parse(await localforage.getItem('ledgerData') || '[]');
-                realHistoryData.value = JSON.parse(await localforage.getItem('historyData') || '[]');
-                stockMeta.value = JSON.parse(await localforage.getItem('stockMeta') || '{}');
+                console.error("載入 IndexedDB 發生錯誤", error);
             } finally {
-                isDbSyncing.value = false;
                 isAppReady.value = true; 
                 updateCharts();
             }
@@ -998,33 +986,10 @@ createApp({
             } 
         }
 
-        let syncTimer = null;
         async function saveData() { 
             await localforage.setItem('ledgerData', JSON.stringify(transactions.value)); 
             await localforage.setItem('historyData', JSON.stringify(realHistoryData.value));
             await localforage.setItem('stockMeta', JSON.stringify(stockMeta.value));
-
-            isDbSyncing.value = true;
-            if (syncTimer) clearTimeout(syncTimer);
-            
-            syncTimer = setTimeout(async () => {
-                try {
-                    const payload = {
-                        ledgerData: JSON.stringify(transactions.value),
-                        historyData: JSON.stringify(realHistoryData.value),
-                        stockMeta: JSON.stringify(stockMeta.value)
-                    };
-                    await fetch(gasApiUrl, {
-                        method: 'POST',
-                        body: JSON.stringify(payload) 
-                    });
-                    console.log("雲端同步成功 (Debounced Sync Complete)");
-                } catch (e) {
-                    console.error("雲端同步失敗", e);
-                } finally {
-                    isDbSyncing.value = false;
-                }
-            }, 1500); 
         }
 
         function exportAll() { const data = { ledger: transactions.value, history: realHistoryData.value, stockMeta: stockMeta.value }; const link = document.createElement("a"); link.href = URL.createObjectURL(new Blob([JSON.stringify(data)], {type: "application/json"})); link.download = "backup.json"; link.click(); }
@@ -1033,7 +998,7 @@ createApp({
             reader.onload = (e) => {
                 const data = JSON.parse(e.target.result);
                 transactions.value = data.ledger; realHistoryData.value = data.history; if(data.stockMeta) stockMeta.value = data.stockMeta;
-                saveData(); updateCharts(); alert('匯入成功，已同步至雲端');
+                saveData(); updateCharts(); alert('匯入成功，已同步至本機');
             }; reader.readAsText(file);
         }
         
@@ -1225,7 +1190,7 @@ createApp({
         function formatNumber(n) { return new Intl.NumberFormat('zh-TW', {maximumFractionDigits:0}).format(n||0); }
         function formatPercent(n) { return ((n||0)*100).toFixed(1) + '%'; }
 
-        let chartSML, chartCML, chartAlloc, chartHist, chartRolling, chartMC;
+        let chartSML, chartCML, chartAlloc, chartHist, chartRolling, chartMC, chartFire;
 
         function initCharts() {
             Chart.defaults.color = '#94a3b8'; Chart.defaults.borderColor = '#334155';
@@ -1276,6 +1241,24 @@ createApp({
                     }
                 });
             }
+            
+            const fireCtx = document.getElementById('fireChart');
+            if(fireCtx && !chartFire) {
+                chartFire = new Chart(fireCtx, {
+                    type: 'line', data: { labels: [], datasets: [] },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        scales: { 
+                            x: { title: {display:true, text:'年份'} }, 
+                            y: { title: {display:true, text:'總淨值 (TWD)'}, beginAtZero: true } 
+                        },
+                        plugins: { 
+                            tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: NT$ ${new Intl.NumberFormat('zh-TW').format(ctx.raw)}` } },
+                            legend: { labels: { color: '#e2e8f0' } }
+                        }
+                    }
+                });
+            }
         }
 
         function updateCharts() {
@@ -1299,6 +1282,44 @@ createApp({
                         chartHist.data.datasets.splice(2);
                     }
                     chartHist.update();
+                }
+
+                if (chartFire) {
+                    const targets = fireTargets.value;
+                    const maxYear = targets.length > 0 ? Math.max(...targets.map(t => t.year)) : 2052;
+                    const startYear = 2028;
+                    
+                    const labels = [];
+                    for (let y = startYear; y <= maxYear; y++) labels.push(y);
+
+                    const targetData = labels.map(y => {
+                        if (y === startYear) return 0;
+                        const t = targets.find(target => target.year === y);
+                        return t ? t.amount : null;
+                    });
+
+                    const history = displayHistory.value;
+                    let lastKnownAsset = 0;
+                    const currentYear = new Date().getFullYear();
+                    
+                    const actualData = labels.map(y => {
+                        if (y === startYear && history.filter(h => h.date.startsWith(startYear.toString())).length === 0) return 0;
+                        
+                        const recordsInYear = history.filter(h => h.date.startsWith(y.toString()));
+                        if (recordsInYear.length > 0) {
+                            recordsInYear.sort((a, b) => new Date(a.date) - new Date(b.date));
+                            lastKnownAsset = recordsInYear[recordsInYear.length - 1].assets;
+                            return lastKnownAsset;
+                        }
+                        return (y <= currentYear && lastKnownAsset > 0) ? lastKnownAsset : null;
+                    });
+
+                    chartFire.data.labels = labels;
+                    chartFire.data.datasets = [
+                        { label: '🎯 FIRE 目標', data: targetData, borderColor: '#fbbf24', borderDash: [5, 5], spanGaps: true, tension: 0, pointBackgroundColor: '#fbbf24', pointRadius: (ctx) => ctx.raw !== null ? 4 : 0 },
+                        { label: '💰 實際水位 (NAV)', data: actualData, borderColor: '#ef4444', backgroundColor: 'rgba(239, 68, 68, 0.1)', fill: true, spanGaps: true, tension: 0.3, pointRadius: 3 }
+                    ];
+                    chartFire.update();
                 }
 
                 if (chartSML && chartCML) {
@@ -1389,7 +1410,7 @@ createApp({
         }
         
         onMounted(() => { 
-            loadDataFromCloud(); 
+            loadDataFromLocal(); 
         });
         
         watch(currentTab, () => { 
@@ -1407,7 +1428,7 @@ createApp({
             removeTransaction, removeHistoryByDate, manualUpdate, updateMeta, fetchPrices, 
             exportAll, importData, getTypeColor, getCategoryColorCode, formatNumber, formatPercent, 
             lastUpdate, displayHistory, enrichedHistory, quantStartDate, dataFrequency, 
-            snapshotToHistory, snapshotDate, isDbSyncing, 
+            snapshotToHistory, snapshotDate,  
             isAppReady, showMCModal, mcOptimal, openMonteCarlo, aiInsights, quantDays,
             fireTargets, activeFireStageIndex, activeFireTarget, fireProgress, updateCharts, addFireTarget
         };
