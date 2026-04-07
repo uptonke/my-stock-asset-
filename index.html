@@ -2,8 +2,8 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
-    <title>股票紀錄 v18.1 (Mobile App Edition)</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>股票紀錄 v18.0 (Supabase Enterprise Edition)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -38,14 +38,10 @@
         ::-webkit-scrollbar { width: 8px; height: 8px; }
         ::-webkit-scrollbar-track { background: #0f172a; }
         ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+        
+        /* 手機端導覽列隱藏滾動條 */
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-
-        /* 👉 手機版優化 CSS */
-        .pb-safe { padding-bottom: env(safe-area-inset-bottom, 1rem); }
-        .sticky-col { position: sticky; left: 0; z-index: 10; background-color: #1e293b; box-shadow: 2px 0 5px -2px rgba(0,0,0,0.5); }
-        th.sticky-col { z-index: 20; background-color: #0f172a; }
-        tr:hover td.sticky-col { background-color: #334155; } /* 同步 Hover 顏色 */
     </style>
 </head>
 <body class="h-screen flex flex-col overflow-hidden text-sm">
@@ -54,15 +50,16 @@
     
     <div v-if="!isAppReady" class="fixed inset-0 z-[999] bg-[#0f172a] flex flex-col items-center justify-center text-white">
         <i class="fas fa-circle-notch fa-spin text-4xl text-yellow-500 mb-4"></i>
-        <p class="text-lg font-bold tracking-widest animate-pulse">系統初始化中 (Loading DB)...</p>
+        <p class="text-lg font-bold tracking-widest animate-pulse">系統初始化中 (Supabase Syncing)...</p>
     </div>
 
     <header class="z-50 flex-none h-16 px-4 md:px-6 flex items-center justify-between shadow-lg transition-colors duration-500" :class="isSimMode ? 'glass-sim' : 'glass'">
         <div class="flex items-center gap-2 md:gap-6 flex-1 overflow-hidden">
             <h1 class="font-bold text-lg md:text-xl tracking-wide flex items-center gap-2 text-white shrink-0">
                 <i class="fas fa-database text-yellow-500"></i> <span class="hidden sm:inline">Stock Portfolio</span>
-                <span v-if="!isSimMode" class="text-xs bg-yellow-600 px-2 py-0.5 rounded text-black font-bold">v18.1</span>
+                <span v-if="!isSimMode" class="text-xs bg-yellow-600 px-2 py-0.5 rounded text-black font-bold">v18.0</span>
                 <span v-else class="text-xs bg-red-600 px-2 py-0.5 rounded text-white font-bold animate-pulse">SIM</span>
+                <i v-if="isDbSyncing" class="fas fa-cloud-upload-alt animate-bounce text-blue-400 text-sm ml-1" title="雲端同步中"></i>
             </h1>
             
             <div class="hidden lg:flex items-center gap-3 bg-slate-800 py-1 px-3 rounded-lg border border-slate-700">
@@ -75,7 +72,7 @@
                 <input v-model="sheetUrl" placeholder="貼上 Google Sheet 網址" class="w-full bg-transparent text-xs text-white focus:outline-none placeholder-gray-500">
             </div>
 
-            <nav class="hidden md:flex gap-6 font-medium ml-4 overflow-x-auto whitespace-nowrap no-scrollbar flex-1">
+            <nav class="flex gap-4 md:gap-6 font-medium ml-2 md:ml-4 overflow-x-auto whitespace-nowrap no-scrollbar flex-1">
                 <button @click="currentTab='summary'" :class="currentTab==='summary'?'tab-active':'tab-inactive'" class="py-4 px-2 transition">總覽</button>
                 <button @click="currentTab='holdings'" :class="currentTab==='holdings'?'tab-active':'tab-inactive'" class="py-4 px-2 transition">庫存</button>
                 <button @click="currentTab='advanced'" :class="currentTab==='advanced'?'tab-active':'tab-inactive'" class="py-4 px-2 transition"><i class="fas fa-chart-network mr-1"></i>分析</button>
@@ -99,7 +96,7 @@
        </div>
     </header>
 
-    <main class="flex-1 overflow-y-auto p-4 md:p-6 pb-24 md:pb-6 transition-colors duration-500 relative">
+    <main class="flex-1 overflow-y-auto p-4 md:p-6 transition-colors duration-500">
         <div class="max-w-7xl mx-auto h-full space-y-6">
 
             <div v-show="currentTab === 'summary'" class="animate-fade-in space-y-6">
@@ -195,7 +192,7 @@
                         </div>
                     </div>
 
-                    <div class="h-64 lg:h-72 mt-6 relative border-t border-gray-700/50 pt-6">
+                    <div class="h-64 mt-6 relative border-t border-gray-700/50 pt-6">
                         <canvas id="fireChart"></canvas>
                     </div>
                 </div>
@@ -235,12 +232,12 @@
                     </div>
                 </div>
 
-                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 h-auto lg:h-96">
-                    <div class="glass p-5 rounded-2xl col-span-1 flex flex-col h-72 lg:h-auto">
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 h-96">
+                    <div class="glass p-5 rounded-2xl col-span-1 flex flex-col">
                         <h4 class="text-white font-bold mb-4 border-l-4 border-yellow-500 pl-3">資產配置</h4>
                         <div class="flex-1 relative"><canvas id="allocationChart"></canvas></div>
                     </div>
-                    <div class="glass p-5 rounded-2xl col-span-2 flex flex-col h-72 lg:h-auto mt-6 lg:mt-0">
+                    <div class="glass p-5 rounded-2xl col-span-2 flex flex-col">
                         <div class="flex justify-between items-center mb-4 border-l-4 border-emerald-500 pl-3">
                             <h4 class="text-white font-bold">淨值成長趨勢 (NAV)</h4>
                         </div>
@@ -254,12 +251,13 @@
                 </div>
             </div>
 
-            <div v-show="currentTab === 'holdings'" class="flex flex-col h-full md:max-h-[85vh] space-y-4 animate-fade-in">
+            <div v-show="currentTab === 'holdings'" class="flex flex-col h-full max-h-[85vh] space-y-4 animate-fade-in">
                 <div class="glass rounded-xl overflow-hidden flex flex-col flex-1">
                     <div class="p-4 bg-gray-800/50 border-b border-gray-700 flex justify-between items-center">
                         <h3 class="font-bold text-white"><i class="fas fa-layer-group text-yellow-500 mr-2"></i>庫存明細 (Risk Monitor)</h3>
                         <div class="text-xs text-gray-400">
-                             <span v-if="lastUpdate" class="text-green-400 mr-2 hidden md:inline">更新於: {{ lastUpdate }}</span>
+                             <span v-if="lastUpdate" class="text-green-400 mr-2">更新於: {{ lastUpdate }}</span>
+                             <span class="text-red-400 font-bold ml-2"><i class="fas fa-exclamation-triangle"></i> 警告: 單一標的佔總資產 > 15%</span>
                         </div>
                     </div>
                     
@@ -267,7 +265,7 @@
                         <table class="w-full text-left whitespace-nowrap excel-table">
                             <thead>
                                 <tr>
-                                    <th class="pl-4 md:pl-6 sticky-col shadow-[2px_0_5px_-2px_rgba(0,0,0,0.5)]">代號</th>
+                                    <th class="pl-6">代號</th>
                                     <th>風險</th>
                                     <th class="text-center w-16" title="Beta 係數">Beta (β)</th>
                                     <th class="text-center w-16" title="年化標準差">SD (σ%)</th>
@@ -282,7 +280,7 @@
                             <tbody class="text-sm">
                                 <template v-for="(group, catName) in groupedHoldings" :key="catName">
                                     <tr class="group-header">
-                                        <td colspan="10" class="pl-4 md:pl-6 py-2 border-t border-b border-gray-600 sticky left-0 z-10 w-screen max-w-[100vw]">
+                                        <td colspan="10" class="pl-6 py-2 border-t border-b border-gray-600">
                                            <i class="fas fa-folder-open mr-2"></i> {{ catName }} 
                                            <span class="text-gray-400 text-xs font-normal ml-2">(Total: {{ formatNumber(group.totalValue) }})</span>
                                         </td>
@@ -290,7 +288,7 @@
                                     <tr v-for="stock in group.items" :key="stock.ticker" 
                                         v-memo="[stock.shares, stock.currentPriceTwd, stock.beta, stock.stdDev, stock.riskLevel, stock.manualPrice]"
                                         class="hover:bg-white/5 transition-colors">
-                                        <td class="pl-4 md:pl-6 font-bold text-white flex items-center gap-2 sticky-col shadow-[2px_0_5px_-2px_rgba(0,0,0,0.5)]">
+                                        <td class="pl-6 font-bold text-white flex items-center gap-2">
                                             {{ stock.ticker }}
                                            <span v-if="stock.isUSD" class="text-[9px] bg-gray-700 px-1 rounded text-gray-300">USD</span>
                                         </td>
@@ -353,7 +351,7 @@
                          </div>
                     </div>
 
-                    <div class="glass p-5 rounded-2xl flex flex-col justify-center mt-6 lg:mt-0">
+                    <div class="glass p-5 rounded-2xl flex flex-col justify-center">
                         <h4 class="text-white font-bold mb-3 border-l-4 border-yellow-500 pl-3">2. 投資組合體質 (Weighted)</h4>
                         <div class="grid grid-cols-2 gap-4 text-center">
                             <div class="quant-card border-yellow-500/30">
@@ -369,7 +367,7 @@
                         </div>
                     </div>
 
-                    <div class="glass p-5 rounded-2xl flex flex-col justify-center mt-6 lg:mt-0">
+                    <div class="glass p-5 rounded-2xl flex flex-col justify-center">
                         <h4 class="text-white font-bold mb-3 border-l-4 border-purple-500 pl-3">3. 市場參數 (SML/CML)</h4>
                         <div class="flex flex-col gap-3">
                             <div class="flex justify-between items-center text-xs">
@@ -389,12 +387,12 @@
                     </div>
                 </div>
 
-                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 h-auto lg:h-96">
-                    <div class="glass p-5 rounded-2xl flex flex-col relative h-72 lg:h-auto">
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 h-96">
+                    <div class="glass p-5 rounded-2xl flex flex-col relative">
                         <h4 class="text-white font-bold mb-2">證券市場線 (SML) - Beta vs Return</h4>
                         <div class="flex-1 relative"><canvas id="smlChart"></canvas></div>
                     </div>
-                    <div class="glass p-5 rounded-2xl flex flex-col relative h-72 lg:h-auto mt-6 lg:mt-0">
+                    <div class="glass p-5 rounded-2xl flex flex-col relative">
                         <h4 class="text-white font-bold mb-2">資本市場線 (CML) - StdDev vs Return</h4>
                         <div class="flex-1 relative"><canvas id="cmlChart"></canvas></div>
                     </div>
@@ -450,7 +448,42 @@
                     </div>
                 </div>
 
-                <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mt-4">
+                <div class="glass p-5 rounded-2xl border-l-4 border-indigo-500 relative mt-6 mb-6 transition-all duration-300">
+                    <div class="absolute -right-4 -top-4 opacity-10 pointer-events-none">
+                        <i class="fas fa-brain text-9xl text-indigo-400"></i>
+                    </div>
+                    <div class="relative z-10 flex flex-col gap-2">
+                        <div class="flex justify-between items-center cursor-pointer group" @click="isAiExpanded = !isAiExpanded">
+                            <div class="flex-1 pr-4">
+                                <h3 class="text-lg font-bold text-white flex items-center gap-2 mb-1">
+                                    <i class="fas fa-magic text-indigo-400" :class="{'animate-pulse': !isAiExpanded}"></i> 
+                                    AI 量化診斷與投組總結
+                                </h3>
+                                <p class="text-sm font-medium transition-colors" :class="aiInsights.details.length > 0 ? 'text-indigo-200 group-hover:text-indigo-100' : 'text-gray-400'">
+                                    <i v-if="aiInsights.details.length === 0" class="fas fa-spinner fa-spin mr-1"></i>
+                                    {{ aiInsights.summary }}
+                                </p>
+                            </div>
+                            <button class="text-indigo-400 hover:text-white transition-transform duration-300 transform bg-gray-900/50 w-8 h-8 rounded-full flex items-center justify-center border border-indigo-500/30" :class="{'rotate-180': isAiExpanded}">
+                                <i class="fas fa-chevron-down"></i>
+                            </button>
+                        </div>
+                        
+                        <div v-show="isAiExpanded" class="mt-3 border-t border-indigo-500/30 pt-4 animate-fade-in">
+                            <ul v-if="aiInsights.details.length > 0" class="space-y-3">
+                                <li v-for="(insight, idx) in aiInsights.details" :key="idx" class="flex items-start gap-3 text-sm bg-gray-900/30 p-3 rounded-lg border border-gray-700/50 hover:border-indigo-500/50 transition-colors">
+                                    <span class="text-xl mt-0.5" v-html="insight.icon"></span>
+                                    <div>
+                                        <span class="font-bold tracking-wide" :class="insight.color">{{ insight.title }}：</span>
+                                        <span class="text-gray-300 leading-relaxed">{{ insight.desc }}</span>
+                                    </div>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
                     <div class="quant-card"><div class="quant-label text-blue-400">年化報酬 (TWR)</div><div class="quant-value text-white">{{ stats.annRet }}%</div></div>
                     <div class="quant-card"><div class="quant-label text-gray-400">年化標準差 (StdDev)</div><div class="quant-value text-white">{{ stats.annVol }}%</div></div>
                     <div class="quant-card"><div class="quant-label text-yellow-400">夏普 (Sharpe)</div><div class="quant-value text-white">{{ stats.sharpe }}%</div></div>
@@ -463,8 +496,8 @@
                     <div class="quant-card bg-white/5 border-yellow-400/30"><div class="quant-label text-yellow-400">峭度 (Kurtosis)</div><div class="quant-value text-white">{{ stats.kurt }}</div></div>
                 </div>
 
-                 <div class="flex-1 glass rounded-xl overflow-hidden flex flex-col mt-4">
-                    <div class="overflow-auto flex-1 h-64 md:h-auto">
+                 <div class="flex-1 glass rounded-xl overflow-hidden flex flex-col">
+                    <div class="overflow-auto flex-1">
                         <table class="w-full text-left whitespace-nowrap">
                             <thead class="sticky top-0 bg-[#0f172a] text-xs text-gray-400 uppercase font-semibold">
                                <tr><th class="p-3 pl-6">日期</th><th class="p-3 text-right">總資產 (NAV)</th><th class="p-3 text-right">總成本 (Cost)</th><th class="p-3 text-right">週期報酬 (Return)</th><th class="p-3 text-center" v-if="!isSimMode">動作</th></tr>
@@ -482,29 +515,29 @@
                     </div>
                  </div>
 
-                 <div class="glass p-5 rounded-xl flex flex-col relative mt-6 h-72 md:h-64">
+                 <div class="glass p-5 rounded-xl flex flex-col relative mt-4">
                     <h4 class="text-white font-bold mb-2"><i class="fas fa-history text-blue-400 mr-2"></i>Rolling 12-Period (Sharpe & Volatility)</h4>
-                    <div class="flex-1 relative"><canvas id="rollingChart"></canvas></div>
+                    <div class="h-64 relative"><canvas id="rollingChart"></canvas></div>
                 </div>
             </div>
 
-            <div v-show="currentTab === 'ledger'" class="flex flex-col md:flex-row gap-6 h-full md:max-h-[85vh]">
+            <div v-show="currentTab === 'ledger'" class="flex flex-col md:flex-row gap-6 h-full max-h-[85vh]">
                  <div class="w-full md:w-80 glass p-5 rounded-xl h-fit space-y-4">
                     <h3 class="font-bold text-white text-lg border-b border-gray-700 pb-2">新增交易</h3>
                     <div><label class="text-xs text-gray-400 mb-1 block">1. 資產類別</label><div class="grid grid-cols-2 gap-2"><button @click="txForm.category='美股'" :class="txForm.category==='美股'?'bg-yellow-600 text-black font-bold':'bg-gray-700 text-gray-400'" class="p-2 rounded text-xs transition">美股</button><button @click="txForm.category='台股'" :class="txForm.category==='台股'?'bg-blue-600 text-white':'bg-gray-700 text-gray-400'" class="p-2 rounded text-xs transition">台股</button><button @click="txForm.category='基金'" :class="txForm.category==='基金'?'bg-green-600 text-white':'bg-gray-700 text-gray-400'" class="p-2 rounded text-xs transition">基金</button><button @click="txForm.category='加密貨幣'" :class="txForm.category==='加密貨幣'?'bg-purple-600 text-white':'bg-gray-700 text-gray-400'" class="p-2 rounded text-xs transition">加密貨幣</button></div></div>
                     <div><label class="text-xs text-gray-400 mb-1 block">2. 交易內容 (TWD)</label><div class="grid grid-cols-2 gap-2 mb-2"><input v-model="txForm.date" type="date" class="input-dark p-2 rounded text-xs col-span-2"><select v-model="txForm.type" class="input-dark p-2 rounded text-xs col-span-2"><option value="Buy">買入 (Buy)</option><option value="Sell">賣出 (Sell)</option></select></div><input v-model="txForm.ticker" placeholder="代號 / 名稱 (如 AAPL)" class="w-full input-dark p-2 rounded text-xs uppercase mb-2"><div class="grid grid-cols-2 gap-2 mb-2"><div><label class="text-[10px] text-gray-500 block">成交單價 (TWD)</label><input v-model.number="txForm.price" type="number" placeholder="台幣價格" class="w-full input-dark p-2 rounded text-xs"></div><div><label class="text-[10px] text-gray-500 block">數量</label><input v-model.number="txForm.shares" type="number" placeholder="股數" class="w-full input-dark p-2 rounded text-xs"></div></div><div class="text-xs text-right text-gray-400 font-mono">總金額 (TWD): <span class="text-white font-bold">{{ formatNumber((txForm.price || 0) * (txForm.shares || 0)) }}</span></div></div>
-                    <button @click="addTransaction" class="w-full btn-purple text-white rounded-lg font-bold text-sm py-3 shadow-lg mb-8 md:mb-0">確認送出</button>
+                    <button @click="addTransaction" class="w-full btn-purple text-white rounded-lg font-bold text-sm py-3 shadow-lg">確認送出</button>
                  </div>
-                 <div class="flex-1 glass rounded-xl overflow-hidden flex flex-col h-96 md:h-auto">
+                 <div class="flex-1 glass rounded-xl overflow-hidden flex flex-col">
                     <div class="p-4 bg-gray-800/50 border-b border-gray-700">
                         <h3 class="font-bold text-white">交易流水帳 (TWD)</h3>
                     </div>
                     <div class="overflow-auto flex-1">
                         <table class="w-full text-left">
-                            <thead class="sticky top-0 bg-[#0f172a] text-xs text-gray-400 uppercase font-semibold"><tr><th class="p-3 pl-4 md:pl-6">日期</th><th class="p-3">類別</th><th class="p-3">名稱</th><th class="p-3 text-right">現金流 (TWD)</th><th class="p-3"></th></tr></thead>
+                            <thead class="sticky top-0 bg-[#0f172a] text-xs text-gray-400 uppercase font-semibold"><tr><th class="p-3">日期</th><th class="p-3">類別</th><th class="p-3">名稱</th><th class="p-3 text-right">現金流 (TWD)</th><th class="p-3"></th></tr></thead>
                             <tbody class="text-sm divide-y divide-white/5">
                                 <tr v-for="(tx, idx) in reversedTransactions" :key="idx" class="hover:bg-white/5">
-                                    <td class="p-3 pl-4 md:pl-6 text-gray-400">{{ tx.date }}</td>
+                                    <td class="p-3 text-gray-400">{{ tx.date }}</td>
                                     <td class="p-3 font-bold" :class="getTypeColor(tx.type)">{{ tx.type }}</td>
                                     <td class="p-3 text-white">{{ tx.ticker || '-' }}</td>
                                     <td class="p-3 text-right font-mono text-white">{{ formatNumber(tx.totalCashFlow) }}</td>
@@ -522,19 +555,19 @@
 
             <div v-if="showHistoryModal" class="fixed inset-0 bg-black/90 flex items-center justify-center z-[100]"><div class="glass p-6 rounded-xl w-full max-w-lg"><h3 class="text-lg font-bold text-white mb-4">補登資料</h3><div class="space-y-3 mb-6"><div class="flex gap-2"><input v-model="historyForm.date" type="date" class="input-dark p-2 rounded flex-1"><input v-model.number="historyForm.assets" type="number" placeholder="NAV" class="input-dark p-2 rounded flex-1"><input v-model.number="historyForm.cost" type="number" placeholder="Cost" class="input-dark p-2 rounded flex-1"></div><button @click="addHistoryRecord" class="w-full btn-gold text-black py-2 rounded font-bold">新增</button></div><button @click="showHistoryModal=false" class="w-full bg-gray-700 py-2 rounded text-white">關閉</button></div></div>
 
-            <div v-if="showMCModal" class="fixed inset-0 bg-black/95 flex items-center justify-center z-[100] p-4">
-                <div class="glass p-4 md:p-6 rounded-xl w-full max-w-5xl h-[90vh] flex flex-col">
+            <div v-if="showMCModal" class="fixed inset-0 bg-black/95 flex items-center justify-center z-[100]">
+                <div class="glass p-6 rounded-xl w-full max-w-5xl h-[85vh] flex flex-col">
                     <div class="flex justify-between items-center mb-4 border-b border-gray-700 pb-3">
-                        <h3 class="text-lg md:text-xl font-bold text-white flex items-center gap-2">
-                            <i class="fas fa-random text-purple-400"></i> Monte Carlo 最適化 (N=5000, SIM)
+                        <h3 class="text-xl font-bold text-white flex items-center gap-2">
+                            <i class="fas fa-random text-purple-400"></i> Monte Carlo 最適化 (N=5000, SIM 模型)
                         </h3>
                         <button @click="showMCModal=false" class="text-gray-400 hover:text-white"><i class="fas fa-times text-xl"></i></button>
                     </div>
-                    <div class="flex-1 flex flex-col md:flex-row gap-4 overflow-hidden">
-                        <div class="flex-1 bg-gray-900 rounded-xl relative p-4 border border-gray-700 min-h-[50vh] md:min-h-0">
+                    <div class="flex-1 flex gap-4 overflow-hidden">
+                        <div class="flex-1 bg-gray-900 rounded-xl relative p-4 border border-gray-700">
                             <canvas id="mcChart"></canvas>
                         </div>
-                        <div class="w-full md:w-72 bg-gray-800/50 rounded-xl p-4 overflow-y-auto border border-gray-700 h-[40vh] md:h-auto">
+                        <div class="w-72 bg-gray-800/50 rounded-xl p-4 overflow-y-auto border border-gray-700">
                             <h4 class="text-yellow-400 font-bold mb-3 text-sm">最佳夏普組合 (Max Sharpe)</h4>
                             <div v-if="mcOptimal" class="space-y-2">
                                 <div class="flex justify-between text-xs text-gray-300 border-b border-gray-600 pb-1"><span>預期報酬</span><span class="font-mono text-green-400">{{ mcOptimal.ret }}%</span></div>
@@ -556,11 +589,12 @@
                                 </div>
 
                                 <div class="mt-4 p-3 bg-blue-900/20 border border-blue-800 rounded-lg text-[10px] text-blue-200 leading-relaxed">
-                                    <p class="font-bold mb-1 text-blue-300"><i class="fas fa-info-circle"></i> 調整指南</p>
+                                    <p class="font-bold mb-1 text-blue-300"><i class="fas fa-info-circle"></i> 調整指南 (How to Trade)</p>
                                     <ul class="list-disc pl-4 opacity-90 space-y-1">
-                                        <li>將上方的 <strong>加/減碼 %</strong> 乘以總資金。</li>
-                                        <li><strong>加碼 (Buy)</strong>：動用閒置現金。</li>
-                                        <li><strong>減碼 (Sell)</strong>：獲利了結或停損。</li>
+                                        <li>將上方的 <strong>加/減碼 %</strong> 乘以您的「總資產規模」，即為具體需買賣的金額。</li>
+                                        <li><strong>加碼 (Buy)</strong>：動用閒置現金，或由減碼資金轉入。</li>
+                                        <li><strong>減碼 (Sell)</strong>：獲利了結或停損，將部位降至目標權重。</li>
+                                        <li><em>注意：SIM 極度依賴 Beta 與 SD 參數，調整前請確認風險設定無誤。</em></li>
                                     </ul>
                                 </div>
                             </div>
@@ -572,33 +606,9 @@
                 </div>
             </div>
 
-        </div>
+       </div>
     </main>
-
-    <nav class="md:hidden fixed bottom-0 left-0 right-0 w-full bg-slate-900 border-t border-slate-800 z-[100] shadow-[0_-4px_10px_rgba(0,0,0,0.3)]" style="padding-bottom: max(0.5rem, env(safe-area-inset-bottom));">
-        <div class="grid grid-cols-5 w-full h-[60px]">
-            <button @click="currentTab='summary'" :class="currentTab==='summary'?'text-yellow-400':'text-gray-400 hover:text-gray-200'" class="w-full h-full flex flex-col items-center justify-center gap-1 bg-transparent p-0 m-0 outline-none select-none touch-manipulation">
-                <div class="w-6 h-6 flex items-center justify-center"><i class="fas fa-chart-pie text-[20px]"></i></div>
-                <span class="text-[10px] font-bold leading-none">總覽</span>
-            </button>
-            <button @click="currentTab='holdings'" :class="currentTab==='holdings'?'text-yellow-400':'text-gray-400 hover:text-gray-200'" class="w-full h-full flex flex-col items-center justify-center gap-1 bg-transparent p-0 m-0 outline-none select-none touch-manipulation">
-                <div class="w-6 h-6 flex items-center justify-center"><i class="fas fa-layer-group text-[20px]"></i></div>
-                <span class="text-[10px] font-bold leading-none">庫存</span>
-            </button>
-            <button @click="currentTab='advanced'" :class="currentTab==='advanced'?'text-yellow-400':'text-gray-400 hover:text-gray-200'" class="w-full h-full flex flex-col items-center justify-center gap-1 bg-transparent p-0 m-0 outline-none select-none touch-manipulation">
-                <div class="w-6 h-6 flex items-center justify-center"><i class="fas fa-chart-line text-[20px]"></i></div>
-                <span class="text-[10px] font-bold leading-none">分析</span>
-            </button>
-            <button @click="currentTab='analytics'" :class="currentTab==='analytics'?'text-yellow-400':'text-gray-400 hover:text-gray-200'" class="w-full h-full flex flex-col items-center justify-center gap-1 bg-transparent p-0 m-0 outline-none select-none touch-manipulation">
-                <div class="w-6 h-6 flex items-center justify-center"><i class="fas fa-brain text-[20px]"></i></div>
-                <span class="text-[10px] font-bold leading-none">量化</span>
-            </button>
-            <button @click="currentTab='ledger'" :class="currentTab==='ledger'?'text-yellow-400':'text-gray-400 hover:text-gray-200'" class="w-full h-full flex flex-col items-center justify-center gap-1 bg-transparent p-0 m-0 outline-none select-none touch-manipulation">
-                <div class="w-6 h-6 flex items-center justify-center"><i class="fas fa-pen-to-square text-[20px]"></i></div>
-                <span class="text-[10px] font-bold leading-none">記帳</span>
-            </button>
-        </div>
-    </nav>
+</div>
 
 <script>
 const { createApp, ref, computed, onMounted, watch, nextTick } = Vue;
@@ -606,8 +616,9 @@ const { createApp, ref, computed, onMounted, watch, nextTick } = Vue;
 createApp({
     setup() {
         const currentTab = ref('summary');
-        const isAiExpanded = ref(false); 
+        const isAiExpanded = ref(false); // 控制 AI 報告展開/折疊
         
+        // 👉 初始化 Supabase 客戶端
         const supabaseUrl = 'https://yrccanqxzrcoknzabifz.supabase.co';
         const supabaseKey = 'sb_publishable_lDfwRDxgMhzRwVk0-Qu3vg_9HTmTFZy';
         const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
@@ -644,10 +655,12 @@ createApp({
         const priceMap = ref({});
         const stockMeta = ref({});
 
+        // 🚀 v18.0: Supabase (PostgreSQL) + IndexedDB 企業級雙核資料流
         async function loadDataFromCloud() {
             isDbSyncing.value = true;
             try {
                 const { data, error } = await supabase.from('portfolio_db').select('*').eq('id', 1).single();
+                
                 if (error && error.code !== 'PGRST116') throw error; 
 
                 if (data) {
@@ -662,6 +675,8 @@ createApp({
                         if (data.settings.priceMap) priceMap.value = data.settings.priceMap;
                     }
                     console.log('✅ Supabase 雲端資料載入成功');
+                } else {
+                    console.log('⚠️ Supabase 尚未有資料，使用預設值或準備首次同步');
                 }
 
                 await localforage.setItem('ledgerData', JSON.stringify(transactions.value));
@@ -672,7 +687,7 @@ createApp({
                 }));
 
             } catch (err) {
-                console.error("❌ Supabase 載入失敗，啟動 IndexedDB 離線模式", err);
+                console.error("❌ Supabase 載入失敗，啟動 IndexedDB 離線救援模式", err);
                 transactions.value = JSON.parse(await localforage.getItem('ledgerData') || '[]');
                 realHistoryData.value = JSON.parse(await localforage.getItem('historyData') || '[]');
                 stockMeta.value = JSON.parse(await localforage.getItem('stockMeta') || '{}');
@@ -1398,7 +1413,7 @@ createApp({
                 if (chartFire) {
                     const targets = fireTargets.value;
                     const maxYear = targets.length > 0 ? Math.max(...targets.map(t => t.year)) : 2052;
-                    const startYear = 2025; // 從 2025 開始，讓畫面不會那麼擠
+                    const startYear = 2028;
                     
                     const labels = [];
                     for (let y = startYear; y <= maxYear; y++) labels.push(y);
