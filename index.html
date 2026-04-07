@@ -575,12 +575,12 @@
         </div>
     </main>
 
-    <nav class="md:hidden fixed bottom-0 w-full bg-slate-900 border-t border-slate-800 flex justify-around items-center h-16 z-[100] pb-safe shadow-[0_-4px_10px_rgba(0,0,0,0.3)]">
-        <button @click="currentTab='summary'" :class="currentTab==='summary'?'text-yellow-400':'text-gray-400 hover:text-gray-200'" class="flex flex-col items-center gap-1 w-full py-2 transition-colors"><i class="fas fa-chart-pie text-lg"></i><span class="text-[10px] font-bold">總覽</span></button>
-        <button @click="currentTab='holdings'" :class="currentTab==='holdings'?'text-yellow-400':'text-gray-400 hover:text-gray-200'" class="flex flex-col items-center gap-1 w-full py-2 transition-colors"><i class="fas fa-layer-group text-lg"></i><span class="text-[10px] font-bold">庫存</span></button>
-        <button @click="currentTab='advanced'" :class="currentTab==='advanced'?'text-yellow-400':'text-gray-400 hover:text-gray-200'" class="flex flex-col items-center gap-1 w-full py-2 transition-colors"><i class="fas fa-chart-line text-lg"></i><span class="text-[10px] font-bold">分析</span></button>
-        <button @click="currentTab='analytics'" :class="currentTab==='analytics'?'text-yellow-400':'text-gray-400 hover:text-gray-200'" class="flex flex-col items-center gap-1 w-full py-2 transition-colors"><i class="fas fa-brain text-lg"></i><span class="text-[10px] font-bold">量化</span></button>
-        <button @click="currentTab='ledger'" :class="currentTab==='ledger'?'text-yellow-400':'text-gray-400 hover:text-gray-200'" class="flex flex-col items-center gap-1 w-full py-2 transition-colors"><i class="fas fa-pen-to-square text-lg"></i><span class="text-[10px] font-bold">記帳</span></button>
+    <nav class="md:hidden fixed bottom-0 left-0 w-full bg-slate-900 border-t border-slate-800 flex justify-around z-[100] pb-safe shadow-[0_-4px_10px_rgba(0,0,0,0.3)]">
+        <button @click="currentTab='summary'" :class="currentTab==='summary'?'text-yellow-400':'text-gray-400 hover:text-gray-200'" class="flex flex-col items-center gap-1 w-full pt-3 pb-2 transition-colors"><i class="fas fa-chart-pie text-xl"></i><span class="text-[10px] font-bold">總覽</span></button>
+        <button @click="currentTab='holdings'" :class="currentTab==='holdings'?'text-yellow-400':'text-gray-400 hover:text-gray-200'" class="flex flex-col items-center gap-1 w-full pt-3 pb-2 transition-colors"><i class="fas fa-layer-group text-xl"></i><span class="text-[10px] font-bold">庫存</span></button>
+        <button @click="currentTab='advanced'" :class="currentTab==='advanced'?'text-yellow-400':'text-gray-400 hover:text-gray-200'" class="flex flex-col items-center gap-1 w-full pt-3 pb-2 transition-colors"><i class="fas fa-chart-line text-xl"></i><span class="text-[10px] font-bold">分析</span></button>
+        <button @click="currentTab='analytics'" :class="currentTab==='analytics'?'text-yellow-400':'text-gray-400 hover:text-gray-200'" class="flex flex-col items-center gap-1 w-full pt-3 pb-2 transition-colors"><i class="fas fa-brain text-xl"></i><span class="text-[10px] font-bold">量化</span></button>
+        <button @click="currentTab='ledger'" :class="currentTab==='ledger'?'text-yellow-400':'text-gray-400 hover:text-gray-200'" class="flex flex-col items-center gap-1 w-full pt-3 pb-2 transition-colors"><i class="fas fa-pen-to-square text-xl"></i><span class="text-[10px] font-bold">記帳</span></button>
     </nav>
 </div>
 
