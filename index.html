@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>股票紀錄 v18.0 (Supabase Enterprise Edition)</title>
+    <title>股票紀錄 v10 (Supabase Enterprise Edition)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -448,42 +448,7 @@
                     </div>
                 </div>
 
-                <div class="glass p-5 rounded-2xl border-l-4 border-indigo-500 relative mt-6 mb-6 transition-all duration-300">
-                    <div class="absolute -right-4 -top-4 opacity-10 pointer-events-none">
-                        <i class="fas fa-brain text-9xl text-indigo-400"></i>
-                    </div>
-                    <div class="relative z-10 flex flex-col gap-2">
-                        <div class="flex justify-between items-center cursor-pointer group" @click="isAiExpanded = !isAiExpanded">
-                            <div class="flex-1 pr-4">
-                                <h3 class="text-lg font-bold text-white flex items-center gap-2 mb-1">
-                                    <i class="fas fa-magic text-indigo-400" :class="{'animate-pulse': !isAiExpanded}"></i> 
-                                    
-                                </h3>
-                                <p class="text-sm font-medium transition-colors" :class="aiInsights.details.length > 0 ? 'text-indigo-200 group-hover:text-indigo-100' : 'text-gray-400'">
-                                    <i v-if="aiInsights.details.length === 0" class="fas fa-spinner fa-spin mr-1"></i>
-                                    {{ aiInsights.summary }}
-                                </p>
-                            </div>
-                            <button class="text-indigo-400 hover:text-white transition-transform duration-300 transform bg-gray-900/50 w-8 h-8 rounded-full flex items-center justify-center border border-indigo-500/30" :class="{'rotate-180': isAiExpanded}">
-                                <i class="fas fa-chevron-down"></i>
-                            </button>
-                        </div>
-                        
-                        <div v-show="isAiExpanded" class="mt-3 border-t border-indigo-500/30 pt-4 animate-fade-in">
-                            <ul v-if="aiInsights.details.length > 0" class="space-y-3">
-                                <li v-for="(insight, idx) in aiInsights.details" :key="idx" class="flex items-start gap-3 text-sm bg-gray-900/30 p-3 rounded-lg border border-gray-700/50 hover:border-indigo-500/50 transition-colors">
-                                    <span class="text-xl mt-0.5" v-html="insight.icon"></span>
-                                    <div>
-                                        <span class="font-bold tracking-wide" :class="insight.color">{{ insight.title }}：</span>
-                                        <span class="text-gray-300 leading-relaxed">{{ insight.desc }}</span>
-                                    </div>
-                                </li>
-                            </ul>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
+                <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mt-4">
                     <div class="quant-card"><div class="quant-label text-blue-400">年化報酬 (TWR)</div><div class="quant-value text-white">{{ stats.annRet }}%</div></div>
                     <div class="quant-card"><div class="quant-label text-gray-400">年化標準差 (StdDev)</div><div class="quant-value text-white">{{ stats.annVol }}%</div></div>
                     <div class="quant-card"><div class="quant-label text-yellow-400">夏普 (Sharpe)</div><div class="quant-value text-white">{{ stats.sharpe }}%</div></div>
@@ -496,8 +461,8 @@
                     <div class="quant-card bg-white/5 border-yellow-400/30"><div class="quant-label text-yellow-400">峭度 (Kurtosis)</div><div class="quant-value text-white">{{ stats.kurt }}</div></div>
                 </div>
 
-                 <div class="flex-1 glass rounded-xl overflow-hidden flex flex-col">
-                    <div class="overflow-auto flex-1">
+                 <div class="flex-1 glass rounded-xl overflow-hidden flex flex-col mt-4">
+                    <div class="overflow-auto flex-1 h-64 md:h-auto">
                         <table class="w-full text-left whitespace-nowrap">
                             <thead class="sticky top-0 bg-[#0f172a] text-xs text-gray-400 uppercase font-semibold">
                                <tr><th class="p-3 pl-6">日期</th><th class="p-3 text-right">總資產 (NAV)</th><th class="p-3 text-right">總成本 (Cost)</th><th class="p-3 text-right">週期報酬 (Return)</th><th class="p-3 text-center" v-if="!isSimMode">動作</th></tr>
@@ -515,9 +480,9 @@
                     </div>
                  </div>
 
-                 <div class="glass p-5 rounded-xl flex flex-col relative mt-4">
+                 <div class="glass p-5 rounded-xl flex flex-col relative mt-6 h-72 md:h-64">
                     <h4 class="text-white font-bold mb-2"><i class="fas fa-history text-blue-400 mr-2"></i>Rolling 12-Period (Sharpe & Volatility)</h4>
-                    <div class="h-64 relative"><canvas id="rollingChart"></canvas></div>
+                    <div class="flex-1 relative"><canvas id="rollingChart"></canvas></div>
                 </div>
             </div>
 
