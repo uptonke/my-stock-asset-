@@ -565,9 +565,11 @@
                                 {{ mcRisk === 'neutral' ? '最佳夏普組合 (Max Sharpe)' : (mcRisk === 'averse' ? '低波動效用組合 (Risk Averse)' : '高預期報酬組合 (Risk Seeking)') }}
                             </h4>
                             <div v-if="mcOptimal" class="space-y-2">
-                                <div class="flex justify-between text-xs text-gray-300 border-b border-gray-600 pb-1"><span>預期報酬</span><span class="font-mono text-green-400">{{ mcOptimal.ret }}%</span></div>
+<div class="flex justify-between text-xs text-gray-300 border-b border-gray-600 pb-1"><span>預期報酬</span><span class="font-mono text-green-400">{{ mcOptimal.ret }}%</span></div>
                                 <div class="flex justify-between text-xs text-gray-300 border-b border-gray-600 pb-1"><span>標準差</span><span class="font-mono text-red-400">{{ mcOptimal.vol }}%</span></div>
-                                <div class="flex justify-between text-xs text-gray-300 border-b border-gray-600 pb-3"><span>Sharpe</span><span class="font-mono text-yellow-400 font-bold">{{ mcOptimal.sharpe }}</span></div>
+                                <div class="flex justify-between text-xs text-gray-300 border-b border-gray-600 pb-1"><span title="調整後夏普值 (含高階動差)">Sharpe / ASR</span><span class="font-mono text-yellow-400 font-bold">{{ mcOptimal.sharpe }}</span></div>
+                                <div class="flex justify-between text-xs text-gray-300 border-b border-gray-600 pb-1"><span>偏度 (Skewness)</span><span class="font-mono" :class="mcOptimal.skew >= 0 ? 'text-green-400' : 'text-red-400'">{{ mcOptimal.skew }}</span></div>
+                                <div class="flex justify-between text-xs text-gray-300 border-b border-gray-600 pb-3"><span>超額峭度 (Ex. Kurtosis)</span><span class="font-mono text-orange-400">{{ mcOptimal.kurt }}</span></div>
                                 
                                 <h5 class="text-[10px] text-gray-400 uppercase tracking-wider mb-2 mt-4 border-b border-gray-700 pb-1">Rebalance 具體調整清單</h5>
                                 <div v-for="item in mcOptimal.weights" :key="item.ticker" class="mb-3 bg-gray-900/50 p-2 rounded border border-gray-700/50">
@@ -1218,14 +1220,14 @@ createApp({
             const remainingWeight = 1.0 - (n_assets * minWeight);
             const n_portfolios = 5000;
 
-            // 👉 1. 馬可夫狀態轉換 (Regime-Switching Parameters)
+            // 👉 1. 馬可夫狀態加入「市場偏度(m_skew)」與「市場超額峭度(m_kurt_ex)」
             const regimeParams = {
-                Normal: { rm: riskParams.value.rm / 100, sm: riskParams.value.sm / 100, rf: riskParams.value.rf / 100, stressCorr: 0 },
-                Bull:   { rm: 0.15,  sm: 0.12, rf: 0.02,  stressCorr: 0 },
-                Bear:   { rm: -0.10, sm: 0.25, rf: 0.01,  stressCorr: 0.5 }, // 熊市相關性上升
-                Crisis: { rm: -0.25, sm: 0.40, rf: 0.001, stressCorr: 1.0 }  // 海嘯：無風險利率趨零，相關性 Copula 崩壞至 1
+                Normal: { rm: riskParams.value.rm / 100, sm: riskParams.value.sm / 100, rf: riskParams.value.rf / 100, stressCorr: 0, m_skew: -0.5, m_kurt_ex: 1.0 },
+                Bull:   { rm: 0.15,  sm: 0.12, rf: 0.02,  stressCorr: 0,   m_skew: 0.2,  m_kurt_ex: 0.5 }, // 多頭微正偏
+                Bear:   { rm: -0.10, sm: 0.25, rf: 0.01,  stressCorr: 0.5, m_skew: -1.0, m_kurt_ex: 2.0 },
+                Crisis: { rm: -0.25, sm: 0.40, rf: 0.001, stressCorr: 1.0, m_skew: -2.5, m_kurt_ex: 5.0 }  // 海嘯極端負偏與厚尾
             };
-            const { rm, sm, rf, stressCorr } = regimeParams[macroRegime.value];
+            const { rm, sm, rf, stressCorr, m_skew, m_kurt_ex } = regimeParams[macroRegime.value];
 
             const mcPoints = [];
             let bestScore = -99999;
@@ -1244,7 +1246,7 @@ createApp({
 
                 let p_ret = 0;
                 let p_beta = 0;
-                let weighted_vol_sum = 0; // 用於極端相關性計算
+                let weighted_vol_sum = 0; 
 
                 weights.forEach((w, i) => {
                     const e_r = rf + assets[i].beta * (rm - rf);
@@ -1262,37 +1264,51 @@ createApp({
                     idio_var += Math.pow(w, 2) * idio_i;
                 });
                 
-                // 👉 2. 尾部相依性 (Tail Dependence Copula Injection)
-                // 當 stressCorr 逼近 1 時，強迫資產波動率由「平方和開根號」轉向「線性直接相加」，抹殺分散風險紅利
                 let standard_vol = Math.sqrt(sys_var + idio_var);
                 let p_vol = standard_vol * (1 - stressCorr) + weighted_vol_sum * stressCorr;
 
-                // 👉 3. Merton 跳躍擴散模型 (Jump-Diffusion Black Swan)
+                // 👉 2. 估算投資組合高階動差 (Portfolio Skewness & Kurtosis)
+                let p_skew = p_vol > 0 ? (Math.pow(p_beta, 3) * Math.pow(sm, 3) * m_skew) / Math.pow(p_vol, 3) : 0;
+                let p_kurt_ex = p_vol > 0 ? (Math.pow(p_beta, 4) * Math.pow(sm, 4) * m_kurt_ex) / Math.pow(p_vol, 4) : 0;
+
                 if (enableBlackSwan.value) {
-                    const jump_prob_daily = 0.005; // 每日 0.5% 機率發生黑天鵝
-                    const expected_jumps_yr = jump_prob_daily * 252; // 年化發生次數 (約 1.26 次)
-                    const jump_mean = -0.15; // 每次跳躍平均跌 15%
-                    const jump_std = 0.05;   // 跳躍幅度的不確定性
+                    const jump_prob_daily = 0.005;
+                    const expected_jumps_yr = jump_prob_daily * 252; 
+                    const jump_mean = -0.15; 
+                    const jump_std = 0.05;   
                     
-                    // 解析解：將跳躍動差疊加回 GBM 的漂移項 (Drift) 與擴散項 (Diffusion)
                     p_ret = p_ret + (expected_jumps_yr * jump_mean);
                     p_vol = Math.sqrt(Math.pow(p_vol, 2) + expected_jumps_yr * (Math.pow(jump_mean, 2) + Math.pow(jump_std, 2)));
+                    // 黑天鵝嚴重破壞高階動差
+                    p_skew -= 1.5; 
+                    p_kurt_ex += 4.0;
                 }
 
                 const p_sharpe = p_vol > 0 ? (p_ret - rf) / p_vol : 0;
 
-                let currentScore = 0;
-                if (mcRisk.value === 'neutral') currentScore = p_sharpe; 
-                else currentScore = p_ret - (0.5 * riskAversionA * Math.pow(p_vol, 2));
+                // 👉 3. ASR (Adjusted Sharpe Ratio) 與 4階效用函數
+                // ASR 公式: SR * [1 + (Skew/6)*SR - (Kurt/24)*SR^2]
+                const p_asr = p_sharpe * (1 + (p_skew / 6) * p_sharpe - (p_kurt_ex / 24) * Math.pow(p_sharpe, 2));
 
-                mcPoints.push({ x: p_vol * 100, y: p_ret * 100, sharpe: p_sharpe, score: currentScore, weights });
+                let currentScore = 0;
+                if (mcRisk.value === 'neutral') {
+                    currentScore = p_asr; // 穩健型：以 ASR 為基準，同時兼顧報酬、風險、偏態與厚尾
+                } else if (mcRisk.value === 'averse') {
+                    // 保守型：極度厭惡波動、厭惡負偏態與厚尾
+                    currentScore = p_ret - (0.5 * riskAversionA * Math.pow(p_vol, 2)) + (0.05 * p_skew) - (0.02 * p_kurt_ex);
+                } else {
+                    // 積極型：追求報酬，容忍厚尾，輕微獎勵正偏態
+                    currentScore = p_ret - (0.5 * riskAversionA * Math.pow(p_vol, 2)) + (0.02 * p_skew);
+                }
+
+                mcPoints.push({ x: p_vol * 100, y: p_ret * 100, sharpe: p_asr, score: currentScore, weights });
 
                 if (currentScore > maxScoreForColor) maxScoreForColor = currentScore;
                 if (currentScore < minScoreForColor) minScoreForColor = currentScore;
 
                 if (currentScore > bestScore) {
                     bestScore = currentScore;
-                    bestPort = { ret: p_ret, vol: p_vol, sharpe: p_sharpe, weights };
+                    bestPort = { ret: p_ret, vol: p_vol, sharpe: p_asr, skew: p_skew, kurt: p_kurt_ex, weights };
                 }
             }
 
@@ -1311,10 +1327,13 @@ createApp({
                 });
                 wList.sort((a,b) => parseFloat(b.opt) - parseFloat(a.opt));
 
+                // 傳遞結果至 UI
                 mcOptimal.value = {
                     ret: (bestPort.ret * 100).toFixed(2),
                     vol: (bestPort.vol * 100).toFixed(2),
                     sharpe: bestPort.sharpe.toFixed(3),
+                    skew: bestPort.skew.toFixed(2),
+                    kurt: bestPort.kurt.toFixed(2),
                     weights: wList
                 };
             }
@@ -1335,7 +1354,7 @@ createApp({
                             pointRadius: 2
                         },
                         {
-                            label: 'Optimal Portfolio',
+                            label: 'Optimal Portfolio (ASR)',
                             data: [{ x: bestPort.vol * 100, y: bestPort.ret * 100 }],
                             backgroundColor: '#fbbf24', pointRadius: 8, borderColor: '#fff', borderWidth: 2
                         }
