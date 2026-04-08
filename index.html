@@ -448,7 +448,27 @@
                     </div>
                 </div>
 
-                
+                <div class="glass p-5 rounded-2xl border-l-4 border-indigo-500 relative mt-6 mb-6 transition-all duration-300">
+                    <div class="absolute -right-4 -top-4 opacity-10 pointer-events-none">
+                        <i class="fas fa-brain text-9xl text-indigo-400"></i>
+                    </div>
+                    <div class="relative z-10 flex flex-col gap-2">
+                        <div class="flex justify-between items-center cursor-pointer group" @click="isAiExpanded = !isAiExpanded">
+                            <div class="flex-1 pr-4">
+                                <h3 class="text-lg font-bold text-white flex items-center gap-2 mb-1">
+                                    <i class="fas fa-magic text-indigo-400" :class="{'animate-pulse': !isAiExpanded}"></i> 
+                                    AI 量化診斷與投組總結
+                                </h3>
+                                <p class="text-sm font-medium transition-colors" :class="aiInsights.details.length > 0 ? 'text-indigo-200 group-hover:text-indigo-100' : 'text-gray-400'">
+                                    <i v-if="aiInsights.details.length === 0" class="fas fa-spinner fa-spin mr-1"></i>
+                                    {{ aiInsights.summary }}
+                                </p>
+                            </div>
+                            <button class="text-indigo-400 hover:text-white transition-transform duration-300 transform bg-gray-900/50 w-8 h-8 rounded-full flex items-center justify-center border border-indigo-500/30" :class="{'rotate-180': isAiExpanded}">
+                                <i class="fas fa-chevron-down"></i>
+                            </button>
+                        </div>
+                        
                         <div v-show="isAiExpanded" class="mt-3 border-t border-indigo-500/30 pt-4 animate-fade-in">
                             <ul v-if="aiInsights.details.length > 0" class="space-y-3">
                                 <li v-for="(insight, idx) in aiInsights.details" :key="idx" class="flex items-start gap-3 text-sm bg-gray-900/30 p-3 rounded-lg border border-gray-700/50 hover:border-indigo-500/50 transition-colors">
