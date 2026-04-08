@@ -535,22 +535,28 @@
                         </div>
                         <button @click="showMCModal=false" class="text-gray-400 hover:text-white absolute top-0 right-0 md:static"><i class="fas fa-times text-xl"></i></button>
                     </div>
-                    <div class="flex flex-col md:flex-row gap-4 mb-4 bg-gray-800/50 p-3 rounded-lg border border-gray-700 items-start md:items-center justify-between shadow-inner">
+                    <div class="flex flex-col md:flex-row flex-wrap gap-4 mb-4 bg-gray-800/50 p-3 rounded-lg border border-gray-700 items-start md:items-center justify-between shadow-inner">
                         <div class="flex items-center gap-2">
-                            <span class="text-xs text-gray-400 font-bold"><i class="fas fa-globe-americas"></i> 總經狀態 (Regime):</span>
+                            <span class="text-xs text-gray-400 font-bold"><i class="fas fa-globe-americas"></i> 狀態:</span>
                             <select v-model="macroRegime" @change="runMonteCarlo" class="bg-gray-900 text-white text-xs font-bold border border-gray-600 rounded px-2 py-1.5 outline-none focus:border-purple-500 transition-colors">
                                 <option value="Normal">正常 (Normal)</option>
                                 <option value="Bull">狂牛 (Bull Market)</option>
                                 <option value="Bear">熊市 (Bear Market)</option>
-                                <option value="Crisis">金融海嘯 (Crisis / Copula=1)</option>
+                                <option value="Crisis">金融海嘯 (Copula=1)</option>
                             </select>
                         </div>
                         <div class="flex items-center gap-2">
-                            <span class="text-xs text-gray-400 font-bold"><i class="fas fa-meteor"></i> 極端尾部風險:</span>
                             <button @click="enableBlackSwan = !enableBlackSwan; runMonteCarlo()"
                                     class="px-3 py-1.5 text-xs font-bold rounded border transition-all flex items-center gap-2"
                                     :class="enableBlackSwan ? 'bg-red-900/80 text-red-400 border-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)]' : 'bg-gray-800 text-gray-500 border-gray-600 hover:text-gray-300'">
-                                <i class="fas fa-crow"></i> 啟動黑天鵝 (Jump-Diffusion)
+                                <i class="fas fa-crow"></i> 黑天鵝 (Jump-Diffusion)
+                            </button>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <button @click="enableInflation = !enableInflation; runMonteCarlo()"
+                                    class="px-3 py-1.5 text-xs font-bold rounded border transition-all flex items-center gap-2"
+                                    :class="enableInflation ? 'bg-blue-900/80 text-blue-400 border-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.5)]' : 'bg-gray-800 text-gray-500 border-gray-600 hover:text-gray-300'">
+                                <i class="fas fa-fire"></i> 扣除通膨 (實質報酬)
                             </button>
                         </div>
                     </div>
@@ -567,7 +573,10 @@
                                 {{ mcRisk === 'neutral' ? '最佳夏普組合 (Max Sharpe)' : (mcRisk === 'averse' ? '低波動效用組合 (Risk Averse)' : '高預期報酬組合 (Risk Seeking)') }}
                             </h4>
                             <div v-if="mcOptimal" class="space-y-2">
-<div class="flex justify-between text-xs text-gray-300 border-b border-gray-600 pb-1"><span>預期報酬</span><span class="font-mono text-green-400">{{ mcOptimal.ret }}%</span></div>
+<div class="flex justify-between text-xs text-gray-300 border-b border-gray-600 pb-1">
+                                    <span>{{ enableInflation ? '實質報酬 (Real)' : '預期報酬 (Nominal)' }}</span>
+                                    <span class="font-mono text-green-400">{{ mcOptimal.ret }}%</span>
+                                </div>
                                 <div class="flex justify-between text-xs text-gray-300 border-b border-gray-600 pb-1"><span>標準差</span><span class="font-mono text-red-400">{{ mcOptimal.vol }}%</span></div>
                                 <div class="flex justify-between text-xs text-gray-300 border-b border-gray-600 pb-1"><span title="調整後夏普值 (含高階動差)">Sharpe / ASR</span><span class="font-mono text-yellow-400 font-bold">{{ mcOptimal.sharpe }}</span></div>
                                 <div class="flex justify-between text-xs text-gray-300 border-b border-gray-600 pb-1"><span>偏度 (Skewness)</span><span class="font-mono" :class="mcOptimal.skew >= 0 ? 'text-green-400' : 'text-red-400'">{{ mcOptimal.skew }}</span></div>
@@ -1222,6 +1231,7 @@ createApp({
         const mcRisk = ref('neutral'); // 👉 
         const macroRegime = ref('Normal'); // 控制馬可夫總經狀態
         const enableBlackSwan = ref(false); // 控制 Merton 跳躍擴散模型
+        const enableInflation = ref(false);
 
         function runMonteCarlo() {
             const ctx = document.getElementById('mcChart');
@@ -1306,10 +1316,22 @@ createApp({
                     
                     p_ret = p_ret + (expected_jumps_yr * jump_mean);
                     p_vol = Math.sqrt(Math.pow(p_vol, 2) + expected_jumps_yr * (Math.pow(jump_mean, 2) + Math.pow(jump_std, 2)));
-                    // 黑天鵝嚴重破壞高階動差
                     p_skew -= 1.5; 
                     p_kurt_ex += 4.0;
                 }
+                // 👉 4. 隨機通膨漂移 (Stochastic Inflation Drift)
+                let rf_effective = rf;
+                if (enableInflation.value) {
+                    const inf_mean = 0.025; // 長期平均通膨率設定為 2.5%
+                    const inf_std = 0.015;  // 通膨本身的波動率 1.5%
+                    
+                    p_ret = p_ret - inf_mean; // 名目報酬轉為「實質購買力報酬」
+                    p_vol = Math.sqrt(Math.pow(p_vol, 2) + Math.pow(inf_std, 2)); // 實質購買力的波動風險上升
+                    rf_effective = rf - inf_mean; // 實質無風險利率
+                }
+
+                // 👉 將原本的 rf 改為 rf_effective 來計算 Sharpe
+                const p_sharpe = p_vol > 0 ? (p_ret - rf_effective) / p_vol : 0;
 
                 const p_sharpe = p_vol > 0 ? (p_ret - rf) / p_vol : 0;
 
@@ -1639,7 +1661,7 @@ createApp({
             lastUpdate, displayHistory, enrichedHistory, quantStartDate, dataFrequency, 
             snapshotToHistory, snapshotDate, isDbSyncing, 
             isAppReady, showMCModal, mcOptimal, openMonteCarlo, aiInsights, isAiExpanded, quantDays,
-            fireTargets, activeFireStageIndex, activeFireTarget, fireProgress, updateCharts, addFireTarget, macroRegime, enableBlackSwan, mcRisk
+            fireTargets, activeFireStageIndex, activeFireTarget, fireProgress, updateCharts, addFireTarget, macroRegime, enableBlackSwan, mcRisk, enableInflation
         };
     }
 }).mount('#app');
