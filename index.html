@@ -1190,7 +1190,7 @@ createApp({
             }
 
             const n_assets = assets.length;
-            const minWeight = 0.05; 
+            const minWeight = 0.01; 
             if (n_assets * minWeight > 1.0) {
                 alert(`標的數量 (${n_assets} 檔) 過多，無法滿足每檔最低 ${minWeight * 100}% 的限制！`);
                 showMCModal.value = false; return;
