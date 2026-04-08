@@ -1251,18 +1251,18 @@ createApp({
             const n_assets = assets.length;
             const minWeight = 0.05; 
             if (n_assets * minWeight > 1.0) {
-                alert(`標的數量 (${n_assets} 檔) 過多，無法滿足每檔最低 ${minWeight * 100}% 的限制！`);
+                alert(`標的數量 (${n_assets} 檔) 過多，無法滿足每檔最低 ${minWeight * 100}% 的限制！請刪減標的或降低最低權重。`);
                 showMCModal.value = false; return;
             }
             const remainingWeight = 1.0 - (n_assets * minWeight);
             const n_portfolios = 5000;
 
-            // 👉 1. 馬可夫狀態加入「市場偏度(m_skew)」與「市場超額峭度(m_kurt_ex)」
+            // 1. 馬可夫狀態加入「市場偏度(m_skew)」與「市場超額峭度(m_kurt_ex)」
             const regimeParams = {
                 Normal: { rm: riskParams.value.rm / 100, sm: riskParams.value.sm / 100, rf: riskParams.value.rf / 100, stressCorr: 0, m_skew: -0.5, m_kurt_ex: 1.0 },
-                Bull:   { rm: 0.15,  sm: 0.12, rf: 0.02,  stressCorr: 0,   m_skew: 0.2,  m_kurt_ex: 0.5 }, // 多頭微正偏
+                Bull:   { rm: 0.15,  sm: 0.12, rf: 0.02,  stressCorr: 0,   m_skew: 0.2,  m_kurt_ex: 0.5 },
                 Bear:   { rm: -0.10, sm: 0.25, rf: 0.01,  stressCorr: 0.5, m_skew: -1.0, m_kurt_ex: 2.0 },
-                Crisis: { rm: -0.25, sm: 0.40, rf: 0.001, stressCorr: 1.0, m_skew: -2.5, m_kurt_ex: 5.0 }  // 海嘯極端負偏與厚尾
+                Crisis: { rm: -0.25, sm: 0.40, rf: 0.001, stressCorr: 1.0, m_skew: -2.5, m_kurt_ex: 5.0 }
             };
             const { rm, sm, rf, stressCorr, m_skew, m_kurt_ex } = regimeParams[macroRegime.value];
 
@@ -1304,10 +1304,11 @@ createApp({
                 let standard_vol = Math.sqrt(sys_var + idio_var);
                 let p_vol = standard_vol * (1 - stressCorr) + weighted_vol_sum * stressCorr;
 
-                // 👉 2. 估算投資組合高階動差 (Portfolio Skewness & Kurtosis)
+                // 2. 估算投資組合高階動差 (Portfolio Skewness & Kurtosis)
                 let p_skew = p_vol > 0 ? (Math.pow(p_beta, 3) * Math.pow(sm, 3) * m_skew) / Math.pow(p_vol, 3) : 0;
                 let p_kurt_ex = p_vol > 0 ? (Math.pow(p_beta, 4) * Math.pow(sm, 4) * m_kurt_ex) / Math.pow(p_vol, 4) : 0;
 
+                // 3. Merton 跳躍擴散模型 (Black Swan)
                 if (enableBlackSwan.value) {
                     const jump_prob_daily = 0.005;
                     const expected_jumps_yr = jump_prob_daily * 252; 
@@ -1319,58 +1320,28 @@ createApp({
                     p_skew -= 1.5; 
                     p_kurt_ex += 4.0;
                 }
-                // 👉 4. 隨機通膨漂移 (Stochastic Inflation Drift)
-                let rf_effective = rf;
+
+                // 4. 隨機通膨漂移 (Stochastic Inflation Drift)
+                let rf_effective = rf; 
                 if (enableInflation.value) {
-                    const inf_mean = 0.025; // 長期平均通膨率設定為 2.5%
-                    const inf_std = 0.015;  // 通膨本身的波動率 1.5%
+                    const inf_mean = 0.025; 
+                    const inf_std = 0.015;  
                     
-                    if (enableBlackSwan.value) {
-                    const jump_prob_daily = 0.005;
-                    const expected_jumps_yr = jump_prob_daily * 252; 
-                    const jump_mean = -0.15; 
-                    const jump_std = 0.05;   
-                    
-                    p_ret = p_ret + (expected_jumps_yr * jump_mean);
-                    p_vol = Math.sqrt(Math.pow(p_vol, 2) + expected_jumps_yr * (Math.pow(jump_mean, 2) + Math.pow(jump_std, 2)));
-                    // 黑天鵝嚴重破壞高階動差
-                    p_skew -= 1.5; 
-                    p_kurt_ex += 4.0;
+                    p_ret = p_ret - inf_mean; 
+                    p_vol = Math.sqrt(Math.pow(p_vol, 2) + Math.pow(inf_std, 2)); 
+                    rf_effective = rf - inf_mean; 
                 }
 
-                // 👉 4. 隨機通膨漂移 (Stochastic Inflation Drift)
-                let rf_effective = rf; // 預設使用名目無風險利率
-                if (enableInflation.value) {
-                    const inf_mean = 0.025; // 長期平均通膨率設定為 2.5%
-                    const inf_std = 0.015;  // 通膨本身的波動率 1.5%
-                    
-                    p_ret = p_ret - inf_mean; // 名目報酬轉為「實質購買力報酬」
-                    p_vol = Math.sqrt(Math.pow(p_vol, 2) + Math.pow(inf_std, 2)); // 實質購買力的波動風險上升
-                    rf_effective = rf - inf_mean; // 實質無風險利率
-                }
-
-                // 👉 修正：精準計算一次 Sharpe，統一採用 rf_effective
+                // 5. 計算 Sharpe 與 ASR
                 const p_sharpe = p_vol > 0 ? (p_ret - rf_effective) / p_vol : 0;
-
-                // 👉 3. ASR (Adjusted Sharpe Ratio) 與 4階效用函數
-                // ASR 公式: SR * [1 + (Skew/6)*SR - (Kurt/24)*SR^2]
                 const p_asr = p_sharpe * (1 + (p_skew / 6) * p_sharpe - (p_kurt_ex / 24) * Math.pow(p_sharpe, 2));
 
                 let currentScore = 0;
                 if (mcRisk.value === 'neutral') {
-                    currentScore = p_asr; // 穩健型：以 ASR 為基準，同時兼顧報酬、風險、偏態與厚尾
+                    currentScore = p_asr; 
                 } else if (mcRisk.value === 'averse') {
-                    // 保守型：極度厭惡波動、厭惡負偏態與厚尾
                     currentScore = p_ret - (0.5 * riskAversionA * Math.pow(p_vol, 2)) + (0.05 * p_skew) - (0.02 * p_kurt_ex);
                 } else {
-                    // 積極型：追求報酬，容忍厚尾，輕微獎勵正偏態
-                    currentScore = p_ret - (0.5 * riskAversionA * Math.pow(p_vol, 2)) + (0.02 * p_skew);
-                }
-
-                mcPoints.push({ x: p_vol * 100, y: p_ret * 100, sharpe: p_asr, score: currentScore, weights });
-                    currentScore = p_ret - (0.5 * riskAversionA * Math.pow(p_vol, 2)) + (0.05 * p_skew) - (0.02 * p_kurt_ex);
-                } else {
-                    // 積極型：追求報酬，容忍厚尾，輕微獎勵正偏態
                     currentScore = p_ret - (0.5 * riskAversionA * Math.pow(p_vol, 2)) + (0.02 * p_skew);
                 }
 
@@ -1400,7 +1371,6 @@ createApp({
                 });
                 wList.sort((a,b) => parseFloat(b.opt) - parseFloat(a.opt));
 
-                // 傳遞結果至 UI
                 mcOptimal.value = {
                     ret: (bestPort.ret * 100).toFixed(2),
                     vol: (bestPort.vol * 100).toFixed(2),
