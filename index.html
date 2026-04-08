@@ -557,18 +557,29 @@
 
             <div v-if="showMCModal" class="fixed inset-0 bg-black/95 flex items-center justify-center z-[100]">
                 <div class="glass p-6 rounded-xl w-full max-w-5xl h-[85vh] flex flex-col">
-                    <div class="flex justify-between items-center mb-4 border-b border-gray-700 pb-3">
-                        <h3 class="text-xl font-bold text-white flex items-center gap-2">
-                            <i class="fas fa-random text-purple-400"></i> Monte Carlo 最適化 (N=5000, SIM 模型)
+                    <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 border-b border-gray-700 pb-3 gap-3 relative">
+                        <h3 class="text-lg md:text-xl font-bold text-white flex items-center gap-2 shrink-0">
+                            <i class="fas fa-random text-purple-400"></i> MC 最佳化配置
                         </h3>
-                        <button @click="showMCModal=false" class="text-gray-400 hover:text-white"><i class="fas fa-times text-xl"></i></button>
+                        <div class="flex gap-1 bg-gray-900 p-1 rounded-lg border border-gray-700 mx-auto md:mx-0 shadow-inner">
+                            <button @click="mcRisk='averse'; runMonteCarlo()" :class="mcRisk==='averse'?'bg-green-600 text-white shadow-md':'text-gray-400 hover:text-gray-200'" class="px-4 py-1.5 text-xs font-bold rounded-md transition-all">保守 (趨避)</button>
+                            <button @click="mcRisk='neutral'; runMonteCarlo()" :class="mcRisk==='neutral'?'bg-blue-600 text-white shadow-md':'text-gray-400 hover:text-gray-200'" class="px-4 py-1.5 text-xs font-bold rounded-md transition-all">穩健 (中立)</button>
+                            <button @click="mcRisk='aggressive'; runMonteCarlo()" :class="mcRisk==='aggressive'?'bg-red-600 text-white shadow-md':'text-gray-400 hover:text-gray-200'" class="px-4 py-1.5 text-xs font-bold rounded-md transition-all">積極 (偏好)</button>
+                        </div>
+                        <button @click="showMCModal=false" class="text-gray-400 hover:text-white absolute top-0 right-0 md:static"><i class="fas fa-times text-xl"></i></button>
                     </div>
-                    <div class="flex-1 flex gap-4 overflow-hidden">
-                        <div class="flex-1 bg-gray-900 rounded-xl relative p-4 border border-gray-700">
+                    
+                    <div class="flex-1 flex flex-col md:flex-row gap-4 overflow-hidden">
+                        <div class="flex-1 bg-gray-900 rounded-xl relative p-4 border border-gray-700 min-h-[50vh] md:min-h-0">
                             <canvas id="mcChart"></canvas>
                         </div>
-                        <div class="w-72 bg-gray-800/50 rounded-xl p-4 overflow-y-auto border border-gray-700">
-                            <h4 class="text-yellow-400 font-bold mb-3 text-sm">最佳夏普組合 (Max Sharpe)</h4>
+                        <div class="w-full md:w-72 bg-gray-800/50 rounded-xl p-4 overflow-y-auto border border-gray-700 h-[40vh] md:h-auto">
+                            <h4 class="text-yellow-400 font-bold mb-3 text-sm flex items-center gap-2">
+                                <i v-if="mcRisk==='neutral'" class="fas fa-balance-scale"></i>
+                                <i v-else-if="mcRisk==='averse'" class="fas fa-shield-alt text-green-400"></i>
+                                <i v-else class="fas fa-rocket text-red-400"></i>
+                                {{ mcRisk === 'neutral' ? '最佳夏普組合 (Max Sharpe)' : (mcRisk === 'averse' ? '低波動效用組合 (Risk Averse)' : '高預期報酬組合 (Risk Seeking)') }}
+                            </h4>
                             <div v-if="mcOptimal" class="space-y-2">
                                 <div class="flex justify-between text-xs text-gray-300 border-b border-gray-600 pb-1"><span>預期報酬</span><span class="font-mono text-green-400">{{ mcOptimal.ret }}%</span></div>
                                 <div class="flex justify-between text-xs text-gray-300 border-b border-gray-600 pb-1"><span>標準差</span><span class="font-mono text-red-400">{{ mcOptimal.vol }}%</span></div>
@@ -1195,6 +1206,8 @@ createApp({
             });
         }
 
+        const mcRisk = ref('neutral'); // 👉 新增：控制風險胃納狀態
+
         function runMonteCarlo() {
             const ctx = document.getElementById('mcChart');
             if(chartMC) chartMC.destroy(); 
@@ -1212,19 +1225,33 @@ createApp({
             }
 
             const n_assets = assets.length;
+            const minWeight = 0.05; 
+            if (n_assets * minWeight > 1.0) {
+                alert(`標的數量 (${n_assets} 檔) 過多，無法滿足每檔最低 ${minWeight * 100}% 的限制！`);
+                showMCModal.value = false; return;
+            }
+            const remainingWeight = 1.0 - (n_assets * minWeight);
+
             const n_portfolios = 5000;
             const rm = riskParams.value.rm / 100;
             const rf = riskParams.value.rf / 100;
             const sm = riskParams.value.sm / 100;
 
             const mcPoints = [];
-            let bestSharpe = -999;
+            let bestScore = -99999;
+            let maxScoreForColor = -99999;
+            let minScoreForColor = 99999;
             let bestPort = null;
 
+            // 👉 根據使用者的選項，動態調整「風險趨避係數 A」
+            let riskAversionA = 0;
+            if (mcRisk.value === 'averse') riskAversionA = 10;      // 保守：極度懲罰波動
+            else if (mcRisk.value === 'aggressive') riskAversionA = 1; // 積極：只看報酬，不太管波動
+
             for (let p = 0; p < n_portfolios; p++) {
-                let weights = Array.from({length: n_assets}, () => Math.random());
-                const sumW = weights.reduce((a,b)=>a+b, 0);
-                weights = weights.map(w => w / sumW);
+                let randWeights = Array.from({length: n_assets}, () => Math.random());
+                const sumRand = randWeights.reduce((a,b)=>a+b, 0);
+                let weights = randWeights.map(w => minWeight + (w / sumRand) * remainingWeight);
 
                 let p_ret = 0;
                 let p_beta = 0;
@@ -1246,10 +1273,21 @@ createApp({
                 const p_vol = Math.sqrt(sys_var + idio_var);
                 const p_sharpe = (p_ret - rf) / p_vol;
 
-                mcPoints.push({ x: p_vol * 100, y: p_ret * 100, sharpe: p_sharpe, weights });
+                // 👉 核心邏輯：效用函數 (Utility Function) 評分機制
+                let currentScore = 0;
+                if (mcRisk.value === 'neutral') {
+                    currentScore = p_sharpe; // 穩健型：預設採用 Max Sharpe
+                } else {
+                    currentScore = p_ret - (0.5 * riskAversionA * Math.pow(p_vol, 2)); // 效用函數
+                }
 
-                if (p_sharpe > bestSharpe) {
-                    bestSharpe = p_sharpe;
+                mcPoints.push({ x: p_vol * 100, y: p_ret * 100, sharpe: p_sharpe, score: currentScore, weights });
+
+                if (currentScore > maxScoreForColor) maxScoreForColor = currentScore;
+                if (currentScore < minScoreForColor) minScoreForColor = currentScore;
+
+                if (currentScore > bestScore) {
+                    bestScore = currentScore;
                     bestPort = { ret: p_ret, vol: p_vol, sharpe: p_sharpe, weights };
                 }
             }
@@ -1257,20 +1295,16 @@ createApp({
             if(bestPort) {
                 const wList = [];
                 const totalVal = totalStockValueTwd.value; 
-                
                 bestPort.weights.forEach((w, i) => { 
                     const optW = w * 100;
                     const curW = totalVal > 0 ? (assets[i].marketValueTwd / totalVal) * 100 : 0;
-                    const diffW = optW - curW;
-                    
                     wList.push({
                         ticker: assets[i].ticker,
                         opt: optW.toFixed(2),
                         cur: curW.toFixed(2),
-                        diff: diffW.toFixed(2)
+                        diff: (optW - curW).toFixed(2)
                     }); 
                 });
-                
                 wList.sort((a,b) => parseFloat(b.opt) - parseFloat(a.opt));
 
                 mcOptimal.value = {
@@ -1289,15 +1323,16 @@ createApp({
                             label: 'Simulated Portfolios',
                             data: mcPoints,
                             backgroundColor: (context) => {
-                                const val = context.raw?.sharpe;
-                                if (!val) return '#3b82f6';
-                                const ratio = Math.max(0, Math.min(1, (val) / (bestSharpe*1.1))); 
+                                // 👉 動態熱力圖：高亮區域會根據你選擇的風險胃納移動！
+                                const val = context.raw?.score;
+                                if (val === undefined) return '#3b82f6';
+                                const ratio = Math.max(0, Math.min(1, (val - minScoreForColor) / (maxScoreForColor - minScoreForColor))); 
                                 return `rgba(${Math.round(255*ratio)}, ${Math.round(150*ratio)}, 200, 0.4)`;
                             },
                             pointRadius: 2
                         },
                         {
-                            label: 'Max Sharpe',
+                            label: 'Optimal Portfolio',
                             data: [{ x: bestPort.vol * 100, y: bestPort.ret * 100 }],
                             backgroundColor: '#fbbf24', pointRadius: 8, borderColor: '#fff', borderWidth: 2
                         }
@@ -1556,7 +1591,7 @@ createApp({
             lastUpdate, displayHistory, enrichedHistory, quantStartDate, dataFrequency, 
             snapshotToHistory, snapshotDate, isDbSyncing, 
             isAppReady, showMCModal, mcOptimal, openMonteCarlo, aiInsights, isAiExpanded, quantDays,
-            fireTargets, activeFireStageIndex, activeFireTarget, fireProgress, updateCharts, addFireTarget
+            fireTargets, activeFireStageIndex, activeFireTarget, fireProgress, updateCharts, addFireTarget, mcRisk
         };
     }
 }).mount('#app');
