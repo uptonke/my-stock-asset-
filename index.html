@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>股票紀錄 v10 (Supabase Enterprise Edition)</title>
+    <title>股票紀錄 v11 (Supabase Enterprise Edition)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -448,15 +448,17 @@
                     </div>
                 </div>
 
-                <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mt-4">
+                <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 mt-4">
                     <div class="quant-card"><div class="quant-label text-blue-400">年化報酬 (TWR)</div><div class="quant-value text-white">{{ stats.annRet }}%</div></div>
-                    <div class="quant-card"><div class="quant-label text-gray-400">年化標準差 (StdDev)</div><div class="quant-value text-white">{{ stats.annVol }}%</div></div>
-                    <div class="quant-card"><div class="quant-label text-yellow-400">夏普 (Sharpe)</div><div class="quant-value text-white">{{ stats.sharpe }}%</div></div>
-                    <div class="quant-card"><div class="quant-label text-yellow-400">索提諾 (Sortino)</div><div class="quant-value text-white">{{ stats.sortino }}%</div></div>
-                    <div class="quant-card"><div class="quant-label text-yellow-400">崔娜 (Treynor)</div><div class="quant-value text-white">{{ stats.treynor }}%</div></div>
-                    <div class="quant-card"><div class="quant-label text-green-400">Jensen's Alpha</div><div class="quant-value text-white">{{ stats.alpha }}%</div></div>
+                    <div class="quant-card"><div class="quant-label text-gray-400">年化標準差 (Vol)</div><div class="quant-value text-white">{{ stats.annVol }}%</div></div>
+                    <div class="quant-card"><div class="quant-label text-yellow-400">夏普 (Sharpe)</div><div class="quant-value text-white">{{ stats.sharpe }}</div></div>
+                    <div class="quant-card"><div class="quant-label text-yellow-400">索提諾 (Sortino)</div><div class="quant-value text-white">{{ stats.sortino }}</div></div>
+                    <div class="quant-card"><div class="quant-label text-yellow-400">卡瑪 (Calmar)</div><div class="quant-value text-white">{{ stats.calmar }}</div></div>
                     <div class="quant-card"><div class="quant-label text-purple-400">Beta (β)</div><div class="quant-value text-white">{{ riskParams.beta }}</div></div>
                     <div class="quant-card"><div class="quant-label text-red-400">VaR (95%)</div><div class="quant-value text-white">{{ stats.var95 }}%</div></div>
+                    <div class="quant-card bg-red-900/20 border-red-500/30"><div class="quant-label text-red-400">預期短缺 CVaR</div><div class="quant-value text-white">{{ stats.cvar95 }}%</div></div>
+                    <div class="quant-card bg-red-900/20 border-red-500/30"><div class="quant-label text-red-400">最大回撤 (MDD)</div><div class="quant-value text-white">{{ stats.mdd }}%</div></div>
+                    <div class="quant-card"><div class="quant-label text-green-400">Alpha (Jensen)</div><div class="quant-value text-white">{{ stats.alpha }}%</div></div>
                     <div class="quant-card bg-white/5 border-yellow-400/30"><div class="quant-label text-yellow-400">偏度 (Skewness)</div><div class="quant-value text-white">{{ stats.skew }}</div></div>
                     <div class="quant-card bg-white/5 border-yellow-400/30"><div class="quant-label text-yellow-400">峭度 (Kurtosis)</div><div class="quant-value text-white">{{ stats.kurt }}</div></div>
                 </div>
@@ -894,22 +896,33 @@ createApp({
             }).reverse();
         });
 
-        const stats = ref({ annRet:'-', annVol:'-', sharpe:'-', sortino:'-', treynor:'-', alpha:'-', var95:'-', skew:'-', kurt:'-' });
+        const stats = ref({ annRet:'-', annVol:'-', sharpe:'-', sortino:'-', treynor:'-', alpha:'-', var95:'-', cvar95:'-', mdd:'-', calmar:'-', skew:'-', kurt:'-' });
 
         watch([filteredHistory, riskParams, dataFrequency], () => {
-             const empty = { annRet:'-', annVol:'-', sharpe:'-', sortino:'-', treynor:'-', alpha:'-', var95:'-', skew:'-', kurt:'-' };
+             const empty = { annRet:'-', annVol:'-', sharpe:'-', sortino:'-', treynor:'-', alpha:'-', var95:'-', cvar95:'-', mdd:'-', calmar:'-', skew:'-', kurt:'-' };
              const h = filteredHistory.value;
              if (h.length < 3) { stats.value = empty; return; }
 
              const sorted = [...h].sort((a,b) => new Date(a.date) - new Date(b.date));
              const returns = [];
              
+             // 計算 MDD 所需的序列
+             let peak = 0;
+             let maxDrawdown = 0;
+             let runningAsset = sorted[0].assets;
+
              for(let i=1; i<sorted.length; i++) {
                  const prev = sorted[i-1];
                  const curr = sorted[i];
                  const netFlow = curr.cost - prev.cost;
                  const denom = prev.assets + (netFlow / 2); 
                  if (denom > 0) returns.push((curr.assets - prev.assets - netFlow) / denom);
+
+                 // 👉 計算最大回撤 (Max Drawdown)
+                 runningAsset = curr.assets - netFlow; // 排除現金流影響的純資產變化
+                 if (runningAsset > peak) peak = runningAsset;
+                 const dd = peak > 0 ? (runningAsset - peak) / peak : 0;
+                 if (dd < maxDrawdown) maxDrawdown = dd;
              }
              if (returns.length < 2) { stats.value = empty; return; }
 
@@ -933,12 +946,24 @@ createApp({
              const downsideDev = Math.sqrt(downsideReturns.length > 0 ? downsideReturns.reduce((a,b) => a + Math.pow(b, 2), 0) / returns.length : 0) * factor; 
              const sortino = downsideDev > 0 ? (annRet - rf) / downsideDev : 0;
 
+             // 👉 計算卡瑪比率 (Calmar Ratio)
+             const calmar = Math.abs(maxDrawdown) > 0 ? annRet / Math.abs(maxDrawdown) : 0;
+
              const expectedRet = rf + beta * (rm - rf);
              const alpha = annRet - expectedRet;
 
+             // 👉 計算 VaR 與 CVaR (Expected Shortfall)
              const sortedReturns = [...returns].sort((a,b) => a-b);
              const idx95 = Math.floor(sortedReturns.length * 0.05);
              const var95 = sortedReturns[idx95] || 0;
+             
+             let cvar95 = 0;
+             if (idx95 > 0) {
+                 const worstReturns = sortedReturns.slice(0, idx95);
+                 cvar95 = worstReturns.reduce((a,b) => a+b, 0) / worstReturns.length;
+             } else {
+                 cvar95 = var95;
+             }
 
              const n = returns.length;
              const stdPop = Math.sqrt(returns.reduce((a,b)=>a+Math.pow(b-avgR, 2),0)/n);
@@ -954,11 +979,13 @@ createApp({
                  treynor: (treynor * 100).toFixed(2),
                  alpha: (alpha * 100).toFixed(2),
                  var95: (var95 * 100).toFixed(2),
+                 cvar95: (cvar95 * 100).toFixed(2), // 預期短缺
+                 mdd: (maxDrawdown * 100).toFixed(2), // 最大回撤
+                 calmar: calmar.toFixed(2), // 卡瑪比率
                  skew: ((sumCubed / n) / Math.pow(stdPop, 3)).toFixed(2),
                  kurt: (((sumQuart / n) / Math.pow(stdPop, 4)) - 3).toFixed(2)
              }; 
         }, { deep: true, immediate: true });
-
         const aiInsights = computed(() => {
             const val = totalStockValueTwd.value;
             const ret = parseFloat(totalStockReturnRate.value);
