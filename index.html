@@ -533,6 +533,25 @@
                         </div>
                         <button @click="showMCModal=false" class="text-gray-400 hover:text-white absolute top-0 right-0 md:static"><i class="fas fa-times text-xl"></i></button>
                     </div>
+                    <div class="flex flex-col md:flex-row gap-4 mb-4 bg-gray-800/50 p-3 rounded-lg border border-gray-700 items-start md:items-center justify-between shadow-inner">
+                        <div class="flex items-center gap-2">
+                            <span class="text-xs text-gray-400 font-bold"><i class="fas fa-globe-americas"></i> 總經狀態 (Regime):</span>
+                            <select v-model="macroRegime" @change="runMonteCarlo" class="bg-gray-900 text-white text-xs font-bold border border-gray-600 rounded px-2 py-1.5 outline-none focus:border-purple-500 transition-colors">
+                                <option value="Normal">正常 (Normal)</option>
+                                <option value="Bull">狂牛 (Bull Market)</option>
+                                <option value="Bear">熊市 (Bear Market)</option>
+                                <option value="Crisis">金融海嘯 (Crisis / Copula=1)</option>
+                            </select>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="text-xs text-gray-400 font-bold"><i class="fas fa-meteor"></i> 極端尾部風險:</span>
+                            <button @click="enableBlackSwan = !enableBlackSwan; runMonteCarlo()"
+                                    class="px-3 py-1.5 text-xs font-bold rounded border transition-all flex items-center gap-2"
+                                    :class="enableBlackSwan ? 'bg-red-900/80 text-red-400 border-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)]' : 'bg-gray-800 text-gray-500 border-gray-600 hover:text-gray-300'">
+                                <i class="fas fa-crow"></i> 啟動黑天鵝 (Jump-Diffusion)
+                            </button>
+                        </div>
+                    </div>
                     
                     <div class="flex-1 flex flex-col md:flex-row gap-4 overflow-hidden">
                         <div class="flex-1 bg-gray-900 rounded-xl relative p-4 border border-gray-700 min-h-[50vh] md:min-h-0">
@@ -1171,7 +1190,9 @@ createApp({
             });
         }
 
-        const mcRisk = ref('neutral'); // 👉 新增：控制風險胃納狀態
+        const mcRisk = ref('neutral'); // 👉 
+        const macroRegime = ref('Normal'); // 控制馬可夫總經狀態
+        const enableBlackSwan = ref(false); // 控制 Merton 跳躍擴散模型
 
         function runMonteCarlo() {
             const ctx = document.getElementById('mcChart');
@@ -1185,22 +1206,26 @@ createApp({
             }
             if(assets.length === 0) {
                 alert("請先在「庫存」分頁填寫標的的 Beta 與 標準差 (不能為0)");
-                showMCModal.value = false;
-                return;
+                showMCModal.value = false; return;
             }
 
             const n_assets = assets.length;
-            const minWeight = 0.01; 
+            const minWeight = 0.05; 
             if (n_assets * minWeight > 1.0) {
                 alert(`標的數量 (${n_assets} 檔) 過多，無法滿足每檔最低 ${minWeight * 100}% 的限制！`);
                 showMCModal.value = false; return;
             }
             const remainingWeight = 1.0 - (n_assets * minWeight);
-
             const n_portfolios = 5000;
-            const rm = riskParams.value.rm / 100;
-            const rf = riskParams.value.rf / 100;
-            const sm = riskParams.value.sm / 100;
+
+            // 👉 1. 馬可夫狀態轉換 (Regime-Switching Parameters)
+            const regimeParams = {
+                Normal: { rm: riskParams.value.rm / 100, sm: riskParams.value.sm / 100, rf: riskParams.value.rf / 100, stressCorr: 0 },
+                Bull:   { rm: 0.15,  sm: 0.12, rf: 0.02,  stressCorr: 0 },
+                Bear:   { rm: -0.10, sm: 0.25, rf: 0.01,  stressCorr: 0.5 }, // 熊市相關性上升
+                Crisis: { rm: -0.25, sm: 0.40, rf: 0.001, stressCorr: 1.0 }  // 海嘯：無風險利率趨零，相關性 Copula 崩壞至 1
+            };
+            const { rm, sm, rf, stressCorr } = regimeParams[macroRegime.value];
 
             const mcPoints = [];
             let bestScore = -99999;
@@ -1208,10 +1233,9 @@ createApp({
             let minScoreForColor = 99999;
             let bestPort = null;
 
-            // 👉 根據使用者的選項，動態調整「風險趨避係數 A」
             let riskAversionA = 0;
-            if (mcRisk.value === 'averse') riskAversionA = 10;      // 保守：極度懲罰波動
-            else if (mcRisk.value === 'aggressive') riskAversionA = 1; // 積極：只看報酬，不太管波動
+            if (mcRisk.value === 'averse') riskAversionA = 10;      
+            else if (mcRisk.value === 'aggressive') riskAversionA = 1; 
 
             for (let p = 0; p < n_portfolios; p++) {
                 let randWeights = Array.from({length: n_assets}, () => Math.random());
@@ -1220,10 +1244,13 @@ createApp({
 
                 let p_ret = 0;
                 let p_beta = 0;
+                let weighted_vol_sum = 0; // 用於極端相關性計算
+
                 weights.forEach((w, i) => {
                     const e_r = rf + assets[i].beta * (rm - rf);
                     p_ret += w * e_r;
                     p_beta += w * assets[i].beta;
+                    weighted_vol_sum += w * (assets[i].stdDev / 100);
                 });
 
                 let sys_var = Math.pow(p_beta, 2) * Math.pow(sm, 2);
@@ -1235,16 +1262,28 @@ createApp({
                     idio_var += Math.pow(w, 2) * idio_i;
                 });
                 
-                const p_vol = Math.sqrt(sys_var + idio_var);
-                const p_sharpe = (p_ret - rf) / p_vol;
+                // 👉 2. 尾部相依性 (Tail Dependence Copula Injection)
+                // 當 stressCorr 逼近 1 時，強迫資產波動率由「平方和開根號」轉向「線性直接相加」，抹殺分散風險紅利
+                let standard_vol = Math.sqrt(sys_var + idio_var);
+                let p_vol = standard_vol * (1 - stressCorr) + weighted_vol_sum * stressCorr;
 
-                // 👉 核心邏輯：效用函數 (Utility Function) 評分機制
-                let currentScore = 0;
-                if (mcRisk.value === 'neutral') {
-                    currentScore = p_sharpe; // 穩健型：預設採用 Max Sharpe
-                } else {
-                    currentScore = p_ret - (0.5 * riskAversionA * Math.pow(p_vol, 2)); // 效用函數
+                // 👉 3. Merton 跳躍擴散模型 (Jump-Diffusion Black Swan)
+                if (enableBlackSwan.value) {
+                    const jump_prob_daily = 0.005; // 每日 0.5% 機率發生黑天鵝
+                    const expected_jumps_yr = jump_prob_daily * 252; // 年化發生次數 (約 1.26 次)
+                    const jump_mean = -0.15; // 每次跳躍平均跌 15%
+                    const jump_std = 0.05;   // 跳躍幅度的不確定性
+                    
+                    // 解析解：將跳躍動差疊加回 GBM 的漂移項 (Drift) 與擴散項 (Diffusion)
+                    p_ret = p_ret + (expected_jumps_yr * jump_mean);
+                    p_vol = Math.sqrt(Math.pow(p_vol, 2) + expected_jumps_yr * (Math.pow(jump_mean, 2) + Math.pow(jump_std, 2)));
                 }
+
+                const p_sharpe = p_vol > 0 ? (p_ret - rf) / p_vol : 0;
+
+                let currentScore = 0;
+                if (mcRisk.value === 'neutral') currentScore = p_sharpe; 
+                else currentScore = p_ret - (0.5 * riskAversionA * Math.pow(p_vol, 2));
 
                 mcPoints.push({ x: p_vol * 100, y: p_ret * 100, sharpe: p_sharpe, score: currentScore, weights });
 
@@ -1288,7 +1327,6 @@ createApp({
                             label: 'Simulated Portfolios',
                             data: mcPoints,
                             backgroundColor: (context) => {
-                                // 👉 動態熱力圖：高亮區域會根據你選擇的風險胃納移動！
                                 const val = context.raw?.score;
                                 if (val === undefined) return '#3b82f6';
                                 const ratio = Math.max(0, Math.min(1, (val - minScoreForColor) / (maxScoreForColor - minScoreForColor))); 
@@ -1310,7 +1348,6 @@ createApp({
                 }
             });
         }
-
         function getTypeColor(type) { return type==='Buy'?'text-red-400':'text-green-400'; }
         function getCategoryColorCode(cat) { return '#3b82f6'; }
         function formatNumber(n) { return new Intl.NumberFormat('zh-TW', {maximumFractionDigits:0}).format(n||0); }
@@ -1556,7 +1593,7 @@ createApp({
             lastUpdate, displayHistory, enrichedHistory, quantStartDate, dataFrequency, 
             snapshotToHistory, snapshotDate, isDbSyncing, 
             isAppReady, showMCModal, mcOptimal, openMonteCarlo, aiInsights, isAiExpanded, quantDays,
-            fireTargets, activeFireStageIndex, activeFireTarget, fireProgress, updateCharts, addFireTarget, mcRisk
+            fireTargets, activeFireStageIndex, activeFireTarget, fireProgress, updateCharts, addFireTarget, macroRegime, enableBlackSwan, mcRisk
         };
     }
 }).mount('#app');
