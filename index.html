@@ -1467,24 +1467,27 @@ createApp({
                 showMCModal.value = false; return;
             }
             const remainingWeight = 1.0 - (n_assets * minWeight);
+            const remainingWeight = 1.0 - (n_assets * minWeight);
             const n_portfolios = 5000;
 
-            const { rm, sm, rf, stressCorr, m_skew, m_kurt_ex } = regimeParams[macroRegime.value];
-
-            // 【修改】把 blViews.value 傳遞進去！
-            const bl_expected_returns = calculateBlackLitterman(assets, rm, rf, sm, blViews.value);
-
-            // 1. 馬可夫狀態加入「市場偏度(m_skew)」與「市場超額峭度(m_kurt_ex)」
+            // ================= 【請從這裡開始替換】 =================
+            // 1. 先定義馬可夫狀態參數 (必須先定義，下面才能解構取值)
             const regimeParams = {
                 Normal: { rm: riskParams.value.rm / 100, sm: riskParams.value.sm / 100, rf: riskParams.value.rf / 100, stressCorr: 0, m_skew: -0.5, m_kurt_ex: 1.0 },
                 Bull:   { rm: 0.15,  sm: 0.12, rf: 0.02,  stressCorr: 0,   m_skew: 0.2,  m_kurt_ex: 0.5 },
                 Bear:   { rm: -0.10, sm: 0.25, rf: 0.01,  stressCorr: 0.5, m_skew: -1.0, m_kurt_ex: 2.0 },
                 Crisis: { rm: -0.25, sm: 0.40, rf: 0.001, stressCorr: 1.0, m_skew: -2.5, m_kurt_ex: 5.0 }
             };
+            
+            // 2. 解構當前狀態的參數
             const { rm, sm, rf, stressCorr, m_skew, m_kurt_ex } = regimeParams[macroRegime.value];
-            const bl_expected_returns = calculateBlackLitterman(assets, rm, rf, sm);
+
+            // 3. 呼叫 Black-Litterman 算預期報酬 (把 blViews.value 傳進去！)
+            const bl_expected_returns = calculateBlackLitterman(assets, rm, rf, sm, blViews.value);
+            // ================= 【替換到這裡為止】 =================
 
             const mcPoints = [];
+            let bestScore = -99999;
             let bestScore = -99999;
             let maxScoreForColor = -99999;
             let minScoreForColor = 99999;
