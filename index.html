@@ -1399,7 +1399,7 @@ createApp({
             const invTauSigma = math.inv(tauSigma);
 
             const K = views.length;
-            let P = math.zeros([K, n]).toArray();
+            let P = math.zeros([K, n]);
             let Q = [];
 
             // 處理 UI 傳入的觀點
@@ -1424,7 +1424,7 @@ createApp({
             const Q_vec = math.matrix(Q);
 
             // Omega 矩陣：使用 Idzorek 方法，假設觀點誤差與資產變異數成正比
-            let Omega = math.zeros([K, K]).toArray();
+            let Omega = math.zeros([K, K]);
             const P_tauSigma_Pt = math.multiply(math.multiply(P_mat, tauSigma), math.transpose(P_mat)).toArray();
             for(let k=0; k<K; k++) {
                 Omega[k][k] = P_tauSigma_Pt[k][k]; 
