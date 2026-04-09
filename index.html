@@ -554,6 +554,13 @@
                             <h4 class="text-sm font-bold text-blue-400"><i class="fas fa-eye"></i> Black-Litterman 主觀觀點 (Views)</h4>
                             <button @click="addBlView" class="text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded font-bold shadow-md transition-colors"><i class="fas fa-plus"></i> 新增觀點</button>
                         </div>
+                        <div class="flex justify-between items-center mb-2">
+                            <h4 class="text-sm font-bold text-blue-400"><i class="fas fa-eye"></i> Black-Litterman 主觀觀點 (Views)</h4>
+                            <div>
+                                <button @click="generateAutoViews" class="text-xs bg-purple-600 hover:bg-purple-500 text-white px-3 py-1.5 rounded font-bold shadow-md transition-colors mr-2"><i class="fas fa-robot"></i> AI 動能預測</button>
+                                <button @click="addBlView" class="text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded font-bold shadow-md transition-colors"><i class="fas fa-plus"></i> 手動觀點</button>
+                            </div>
+                        </div>
                         <div v-for="(view, idx) in blViews" :key="idx" class="flex flex-wrap items-center gap-2 mb-2 text-xs bg-gray-900/50 p-2 rounded border border-gray-700/50">
                             <select v-model="view.type" class="bg-gray-800 border border-gray-600 rounded text-white p-1.5 outline-none focus:border-blue-500 transition-colors">
                                 <option value="absolute">絕對觀點 (Absolute)</option>
@@ -707,6 +714,52 @@ createApp({
                 });
             } else {
                 alert('庫存中沒有合格的標的 (需設定 Beta 與 StdDev)');
+            }
+        }
+        // ==========================================
+        // 🤖 量化觀點生成器 (Momentum Factor Generator)
+        // ==========================================
+        function generateAutoViews() {
+            const assets = [...mcAvailableAssets.value];
+            if (assets.length < 2) {
+                alert("需要至少 2 檔合格標的才能進行 AI 動能預測。");
+                return;
+            }
+
+            // 1. 清空現有的主觀觀點
+            blViews.value = [];
+
+            // 2. 動能因子排序：以「未實現報酬率 (returnRate)」作為近期強弱指標，由大排到小
+            assets.sort((a, b) => parseFloat(b.returnRate) - parseFloat(a.returnRate));
+
+            const strongest = assets[0];
+            const weakest = assets[assets.length - 1];
+
+            // 3. 生成【相對觀點】：強者恆強
+            // 預測最強勢標的將勝過最弱勢標的。勝出幅度設定為兩者標準差平均值的 0.5 倍 (保守風控)
+            const expectedOutperformance = ((strongest.stdDev + weakest.stdDev) / 2) * 0.5;
+            
+            blViews.value.push({
+                type: 'relative',
+                asset1: strongest.ticker,
+                asset2: weakest.ticker,
+                value: parseFloat(expectedOutperformance.toFixed(1))
+            });
+
+            // 4. 生成【絕對觀點】：給予次強標的額外的 Alpha
+            if (assets.length >= 3) {
+                const secondStrongest = assets[1];
+                // 預期報酬 = 無風險利率 + Beta * (市場溢酬) + 3% (動能 Alpha)
+                const rf = riskParams.value.rf;
+                const rm = riskParams.value.rm;
+                const expectedReturn = rf + secondStrongest.beta * (rm - rf) + 3.0;
+                
+                blViews.value.push({
+                    type: 'absolute',
+                    asset1: secondStrongest.ticker,
+                    asset2: strongest.ticker, // 絕對觀點用不到這個欄位
+                    value: parseFloat(expectedReturn.toFixed(1))
+                });
             }
         }
         const currentTab = ref('summary');
@@ -1874,7 +1927,8 @@ createApp({
             isAppReady, showMCModal, mcOptimal, openMonteCarlo, aiInsights, isAiExpanded, quantDays,
             fireTargets, activeFireStageIndex, activeFireTarget, isLoggedIn, loginEmail, loginPassword, loginError, 
             isAuthenticating, handleLogin, handleLogout, checkAuth, fireProgress, 
-            updateCharts, addFireTarget, macroRegime, enableBlackSwan, mcRisk, blViews, mcAvailableAssets, addBlView, enableInflation
+            updateCharts, addFireTarget, macroRegime, enableBlackSwan, mcRisk, blViews, mcAvailableAssets, addBlView, enableInflation,
+            blViews, mcAvailableAssets, addBlView, generateAutoViews, enableInflation
         };
     }
 }).mount('#app');
