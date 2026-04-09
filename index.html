@@ -3,13 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>股票紀錄 v11 (Supabase Enterprise Edition)</title>
+    <title>股票紀錄 v12 (Supabase Enterprise Edition)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/localforage/1.10.0/localforage.min.js"></script>
     <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/11.8.0/math.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
         body { font-family: 'Microsoft JhengHei', 'Segoe UI', Roboto, sans-serif; background-color: #0f172a; color: #e2e8f0; }
@@ -1311,6 +1314,44 @@ createApp({
         const macroRegime = ref('Normal'); // 控制馬可夫總經狀態
         const enableBlackSwan = ref(false); // 控制 Merton 跳躍擴散模型
         const enableInflation = ref(false);
+        // ==========================================
+        // 🚀 Black-Litterman 模型：計算隱含均衡報酬 (Pi)
+        // ==========================================
+        function calculateBlackLitterman(assets, rm, rf, sm) {
+            const n = assets.length;
+            const math = window.math; // 呼叫 math.js
+
+            // 1. 建立共變異數矩陣 (Covariance Matrix) - 基於單一指數模型
+            const varianceM = Math.pow(sm, 2);
+            let covMatrix = [];
+            for (let i = 0; i < n; i++) {
+                covMatrix[i] = [];
+                for (let j = 0; j < n; j++) {
+                    if (i === j) {
+                        // 對角線：自身變異數
+                        covMatrix[i][j] = Math.pow(assets[i].stdDev / 100, 2); 
+                    } else {
+                        // 非對角線：透過 Beta 估算共變異數
+                        covMatrix[i][j] = assets[i].beta * assets[j].beta * varianceM; 
+                    }
+                }
+            }
+
+            // 2. 市場風險趨避係數 (Market Risk Aversion, Lambda)
+            // 代表市場承擔每一單位風險所要求的超額報酬
+            const lambda = (rm - rf) / varianceM;
+
+            // 3. 取得基準權重 (實務上應為市值權重，這裡先用你目前的庫存權重做為初始均衡狀態)
+            const wkt = assets.map(a => a.totalWeight);
+
+            // 4. 矩陣運算：隱含均衡報酬 Pi = Lambda * Sigma * wkt
+            const Sigma = math.matrix(covMatrix);
+            const W = math.matrix(wkt);
+            const Pi_excess = math.multiply(lambda, math.multiply(Sigma, W)).toArray();
+
+            // 5. 加上無風險利率，轉回絕對預期報酬率
+            return Pi_excess.map(p => p + rf);
+        }
 
         function runMonteCarlo() {
             const ctx = document.getElementById('mcChart');
@@ -1344,6 +1385,7 @@ createApp({
                 Crisis: { rm: -0.25, sm: 0.40, rf: 0.001, stressCorr: 1.0, m_skew: -2.5, m_kurt_ex: 5.0 }
             };
             const { rm, sm, rf, stressCorr, m_skew, m_kurt_ex } = regimeParams[macroRegime.value];
+            const bl_expected_returns = calculateBlackLitterman(assets, rm, rf, sm);
 
             const mcPoints = [];
             let bestScore = -99999;
@@ -1365,7 +1407,8 @@ createApp({
                 let weighted_vol_sum = 0; 
 
                 weights.forEach((w, i) => {
-                    const e_r = rf + assets[i].beta * (rm - rf);
+                    // 【修改】使用 Black-Litterman 算出的預期報酬
+                    const e_r = bl_expected_returns[i]; 
                     p_ret += w * e_r;
                     p_beta += w * assets[i].beta;
                     weighted_vol_sum += w * (assets[i].stdDev / 100);
