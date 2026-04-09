@@ -47,6 +47,30 @@
 <body class="h-screen flex flex-col overflow-hidden text-sm">
 
 <div id="app" class="h-full flex flex-col transition-colors duration-500" :class="isSimMode ? 'bg-[#1a0505]' : 'bg-[#0f172a]'">
+    <div v-if="!isLoggedIn" class="fixed inset-0 z-[1000] bg-[#000] flex items-center justify-center p-4 transition-opacity duration-500">
+        <div class="glass p-8 rounded-3xl w-full max-w-sm border border-white/20 shadow-2xl">
+            <div class="text-center mb-8">
+                <div class="text-5xl mb-3 text-yellow-500"><i class="fas fa-chart-line"></i></div>
+                <h2 class="text-2xl font-black text-white tracking-widest">PORTFOLIO</h2>
+                <div class="text-[10px] text-gray-400 mt-1 uppercase font-bold tracking-widest">Secure Access Only</div>
+            </div>
+            <form @submit.prevent="handleLogin" class="space-y-5">
+                <div>
+                    <label class="block text-xs text-gray-400 mb-1 uppercase font-bold">Email</label>
+                    <input v-model="loginEmail" type="email" required class="w-full bg-[#1e293b] border border-slate-600 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-yellow-500 transition-colors">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-400 mb-1 uppercase font-bold">Password</label>
+                    <input v-model="loginPassword" type="password" required class="w-full bg-[#1e293b] border border-slate-600 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-yellow-500 transition-colors">
+                </div>
+                <div v-if="loginError" class="text-xs text-red-400 text-center bg-red-400/10 py-2 rounded">{{ loginError }}</div>
+                <button type="submit" :disabled="isAuthenticating" class="w-full btn-gold text-black font-black py-3 rounded-xl mt-6 transition-colors tracking-wider flex justify-center items-center">
+                    <i v-if="isAuthenticating" class="fas fa-spinner fa-spin mr-2"></i>
+                    {{ isAuthenticating ? 'AUTHENTICATING...' : 'LOGIN 登入' }}
+                </button>
+            </form>
+        </div>
+    </div>
     
     <div v-if="!isAppReady" class="fixed inset-0 z-[999] bg-[#0f172a] flex flex-col items-center justify-center text-white">
         <i class="fas fa-circle-notch fa-spin text-4xl text-yellow-500 mb-4"></i>
@@ -93,6 +117,7 @@
                  <input type="file" @change="importData" class="hidden" accept=".json">
              </label>
              <button @click="exportAll" class="p-2 text-green-400 hover:text-white transition" title="匯出備份"><i class="fas fa-download"></i></button>
+             <button @click="handleLogout" class="p-2 text-red-400 hover:text-white transition border-l border-gray-600 pl-3 ml-1" title="登出系統"><i class="fas fa-sign-out-alt"></i></button>
        </div>
     </header>
 
@@ -634,6 +659,60 @@ createApp({
         const isAppReady = ref(false); 
         const showMCModal = ref(false); 
         const mcOptimal = ref(null); 
+        // ==========================================
+        // 🔒 Auth & Session Management (Vue 版)
+        // ==========================================
+        const isLoggedIn = ref(false);
+        const loginEmail = ref('');
+        const loginPassword = ref('');
+        const loginError = ref('');
+        const isAuthenticating = ref(false);
+
+        // 1. 檢查登入狀態
+        const checkAuth = async () => {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session) {
+                isLoggedIn.value = true;
+                // ⚠️ 這裡呼叫你原本用來拉資料的 function (例如 fetchPrices 或 initData)
+                // fetchPrices(); 
+            } else {
+                // 如果沒登入，把原本的 Loading 關掉，讓畫面顯示登入框
+                isAppReady.value = true; 
+            }
+        };
+
+        // 2. 登入動作
+        const handleLogin = async () => {
+            isAuthenticating.value = true;
+            loginError.value = '';
+            
+            const { data, error } = await supabase.auth.signInWithPassword({
+                email: loginEmail.value,
+                password: loginPassword.value,
+            });
+
+            if (error) {
+                loginError.value = 'Access Denied: ' + error.message;
+            } else {
+                isLoggedIn.value = true;
+                isAppReady.value = false; // 重新顯示 Loading
+                // ⚠️ 這裡呼叫你原本用來拉資料的 function
+                // await fetchPrices();
+                isAppReady.value = true; 
+            }
+            isAuthenticating.value = false;
+        };
+
+        // 3. 登出動作
+        const handleLogout = async () => {
+            await supabase.auth.signOut();
+            window.location.reload();
+        };
+
+        // 在 Vue 掛載時自動檢查
+        onMounted(() => {
+            checkAuth();
+        });
         
         const isDbSyncing = ref(false); 
         const showHistoryModal = ref(false);
@@ -1655,7 +1734,9 @@ createApp({
             lastUpdate, displayHistory, enrichedHistory, quantStartDate, dataFrequency, 
             snapshotToHistory, snapshotDate, isDbSyncing, 
             isAppReady, showMCModal, mcOptimal, openMonteCarlo, aiInsights, isAiExpanded, quantDays,
-            fireTargets, activeFireStageIndex, activeFireTarget, fireProgress, updateCharts, addFireTarget, macroRegime, enableBlackSwan, mcRisk, enableInflation
+            fireTargets, activeFireStageIndex, activeFireTarget, isLoggedIn, loginEmail, loginPassword, loginError, 
+            isAuthenticating, handleLogin, handleLogout, checkAuth fireProgress, 
+            updateCharts, addFireTarget, macroRegime, enableBlackSwan, mcRisk, enableInflation
         };
     }
 }).mount('#app');
