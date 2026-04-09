@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>股票紀錄 v12 (Supabase Enterprise Edition)</title>
+    <title>股票紀錄 v10 (Supabase Enterprise Edition)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -84,7 +84,7 @@
         <div class="flex items-center gap-2 md:gap-6 flex-1 overflow-hidden">
             <h1 class="font-bold text-lg md:text-xl tracking-wide flex items-center gap-2 text-white shrink-0">
                 <i class="fas fa-database text-yellow-500"></i> <span class="hidden sm:inline">Stock Portfolio</span>
-                <span v-if="!isSimMode" class="text-xs bg-yellow-600 px-2 py-0.5 rounded text-black font-bold">v18.0</span>
+                <span v-if="!isSimMode" class="text-xs bg-yellow-600 px-2 py-0.5 rounded text-black font-bold">v10.0</span>
                 <span v-else class="text-xs bg-red-600 px-2 py-0.5 rounded text-white font-bold animate-pulse">SIM</span>
                 <i v-if="isDbSyncing" class="fas fa-cloud-upload-alt animate-bounce text-blue-400 text-sm ml-1" title="雲端同步中"></i>
             </h1>
@@ -549,6 +549,39 @@
             </div>
 
             <div v-if="showHistoryModal" class="fixed inset-0 bg-black/90 flex items-center justify-center z-[100]"><div class="glass p-6 rounded-xl w-full max-w-lg"><h3 class="text-lg font-bold text-white mb-4">補登資料</h3><div class="space-y-3 mb-6"><div class="flex gap-2"><input v-model="historyForm.date" type="date" class="input-dark p-2 rounded flex-1"><input v-model.number="historyForm.assets" type="number" placeholder="NAV" class="input-dark p-2 rounded flex-1"><input v-model.number="historyForm.cost" type="number" placeholder="Cost" class="input-dark p-2 rounded flex-1"></div><button @click="addHistoryRecord" class="w-full btn-gold text-black py-2 rounded font-bold">新增</button></div><button @click="showHistoryModal=false" class="w-full bg-gray-700 py-2 rounded text-white">關閉</button></div></div>
+            <div class="bg-gray-800/50 p-3 rounded-lg border border-gray-700 mb-4 shadow-inner">
+                        <div class="flex justify-between items-center mb-2">
+                            <h4 class="text-sm font-bold text-blue-400"><i class="fas fa-eye"></i> Black-Litterman 主觀觀點 (Views)</h4>
+                            <button @click="addBlView" class="text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded font-bold shadow-md transition-colors"><i class="fas fa-plus"></i> 新增觀點</button>
+                        </div>
+                        <div v-for="(view, idx) in blViews" :key="idx" class="flex flex-wrap items-center gap-2 mb-2 text-xs bg-gray-900/50 p-2 rounded border border-gray-700/50">
+                            <select v-model="view.type" class="bg-gray-800 border border-gray-600 rounded text-white p-1.5 outline-none focus:border-blue-500 transition-colors">
+                                <option value="absolute">絕對觀點 (Absolute)</option>
+                                <option value="relative">相對觀點 (Relative)</option>
+                            </select>
+                            
+                            <span class="text-gray-400">我認為</span>
+                            <select v-model="view.asset1" class="bg-gray-800 border border-gray-600 rounded text-white p-1.5 outline-none font-bold text-yellow-400">
+                                <option v-for="a in mcAvailableAssets" :value="a.ticker">{{a.ticker}}</option>
+                            </select>
+                            
+                            <span v-if="view.type === 'absolute'" class="text-gray-400">的預期年化報酬有</span>
+                            <span v-if="view.type === 'relative'" class="text-gray-400">的表現將會勝過</span>
+                            
+                            <select v-if="view.type === 'relative'" v-model="view.asset2" class="bg-gray-800 border border-gray-600 rounded text-white p-1.5 outline-none font-bold text-blue-400">
+                                <option v-for="a in mcAvailableAssets" :value="a.ticker">{{a.ticker}}</option>
+                            </select>
+                            
+                            <span v-if="view.type === 'relative'" class="text-gray-400">約</span>
+                            <input v-model.number="view.value" type="number" step="0.1" class="w-16 bg-gray-800 border border-gray-600 rounded text-green-400 font-mono font-bold p-1.5 outline-none text-center focus:border-green-500" placeholder="%">
+                            <span class="text-gray-400">%</span>
+                            
+                            <button @click="blViews.splice(idx, 1)" class="text-red-400 hover:text-red-300 ml-auto p-1"><i class="fas fa-trash"></i></button>
+                        </div>
+                        <div v-if="blViews.length === 0" class="text-xs text-gray-500 text-center py-2 opacity-70">
+                            目前無主觀觀點。MC 最佳化將完全依賴市場隱含均衡報酬 (Implied Equilibrium)。
+                        </div>
+                    </div>
 
             <div v-if="showMCModal" class="fixed inset-0 bg-black/95 flex items-center justify-center z-[100]">
                 <div class="glass p-6 rounded-xl w-full max-w-5xl h-[85vh] flex flex-col">
@@ -601,7 +634,7 @@
                                 {{ mcRisk === 'neutral' ? '最佳夏普組合 (Max Sharpe)' : (mcRisk === 'averse' ? '低波動效用組合 (Risk Averse)' : '高預期報酬組合 (Risk Seeking)') }}
                             </h4>
                             <div v-if="mcOptimal" class="space-y-2">
-<div class="flex justify-between text-xs text-gray-300 border-b border-gray-600 pb-1">
+                          <div class="flex justify-between text-xs text-gray-300 border-b border-gray-600 pb-1">
                                     <span>{{ enableInflation ? '實質報酬 (Real)' : '預期報酬 (Nominal)' }}</span>
                                     <span class="font-mono text-green-400">{{ mcOptimal.ret }}%</span>
                                 </div>
@@ -651,6 +684,31 @@ const { createApp, ref, computed, onMounted, watch, nextTick } = Vue;
 
 createApp({
     setup() {
+        const blViews = ref([]); // 存放使用者輸入的觀點
+        
+        // 集中提取合格標的 (Beta與SD>0)，供 UI 下拉選單與 MC 引擎共用
+        const mcAvailableAssets = computed(() => {
+            const list = [];
+            for (const cat in groupedHoldings.value) {
+                groupedHoldings.value[cat].items.forEach(item => {
+                    if(item.beta > 0 && item.stdDev > 0) list.push(item);
+                });
+            }
+            return list;
+        });
+
+        function addBlView() {
+            if(mcAvailableAssets.value.length > 0) {
+                blViews.value.push({
+                    type: 'absolute',
+                    asset1: mcAvailableAssets.value[0].ticker,
+                    asset2: mcAvailableAssets.value.length > 1 ? mcAvailableAssets.value[1].ticker : mcAvailableAssets.value[0].ticker,
+                    value: 8.0
+                });
+            } else {
+                alert('庫存中沒有合格的標的 (需設定 Beta 與 StdDev)');
+            }
+        }
         const currentTab = ref('summary');
         const isAiExpanded = ref(false); // 控制 AI 報告展開/折疊
         
@@ -1314,55 +1372,89 @@ createApp({
         const macroRegime = ref('Normal'); // 控制馬可夫總經狀態
         const enableBlackSwan = ref(false); // 控制 Merton 跳躍擴散模型
         const enableInflation = ref(false);
-        // ==========================================
-        // 🚀 Black-Litterman 模型：計算隱含均衡報酬 (Pi)
-        // ==========================================
-        function calculateBlackLitterman(assets, rm, rf, sm) {
+        function calculateBlackLitterman(assets, rm, rf, sm, views = []) {
             const n = assets.length;
-            const math = window.math; // 呼叫 math.js
+            const math = window.math;
 
-            // 1. 建立共變異數矩陣 (Covariance Matrix) - 基於單一指數模型
+            // 1. Covariance Matrix & Implied Returns (Prior)
             const varianceM = Math.pow(sm, 2);
             let covMatrix = [];
             for (let i = 0; i < n; i++) {
                 covMatrix[i] = [];
                 for (let j = 0; j < n; j++) {
-                    if (i === j) {
-                        // 對角線：自身變異數
-                        covMatrix[i][j] = Math.pow(assets[i].stdDev / 100, 2); 
-                    } else {
-                        // 非對角線：透過 Beta 估算共變異數
-                        covMatrix[i][j] = assets[i].beta * assets[j].beta * varianceM; 
-                    }
+                    covMatrix[i][j] = (i === j) ? Math.pow(assets[i].stdDev / 100, 2) : assets[i].beta * assets[j].beta * varianceM;
                 }
             }
-
-            // 2. 市場風險趨避係數 (Market Risk Aversion, Lambda)
-            // 代表市場承擔每一單位風險所要求的超額報酬
             const lambda = (rm - rf) / varianceM;
-
-            // 3. 取得基準權重 (實務上應為市值權重，這裡先用你目前的庫存權重做為初始均衡狀態)
             const wkt = assets.map(a => a.totalWeight);
-
-            // 4. 矩陣運算：隱含均衡報酬 Pi = Lambda * Sigma * wkt
             const Sigma = math.matrix(covMatrix);
-            const W = math.matrix(wkt);
-            const Pi_excess = math.multiply(lambda, math.multiply(Sigma, W)).toArray();
+            const Pi_excess = math.multiply(lambda, math.multiply(Sigma, wkt)).toArray();
 
-            // 5. 加上無風險利率，轉回絕對預期報酬率
-            return Pi_excess.map(p => p + rf);
+            // 如果沒有觀點，直接返回隱含報酬
+            if (!views || views.length === 0) return Pi_excess.map(p => p + rf);
+
+            // 2. 構建主觀觀點矩陣 (P, Q, Omega)
+            const tau = 0.05; // 信心標量
+            const tauSigma = math.multiply(tau, Sigma);
+            const invTauSigma = math.inv(tauSigma);
+
+            const K = views.length;
+            let P = math.zeros([K, n]).toArray();
+            let Q = [];
+
+            // 處理 UI 傳入的觀點
+            views.forEach((v, k) => {
+                const idx1 = assets.findIndex(a => a.ticker === v.asset1);
+                if (idx1 < 0) return; // 防呆
+
+                if (v.type === 'absolute') {
+                    P[k][idx1] = 1;
+                    Q.push((v.value / 100) - rf); // 絕對觀點須扣除無風險利率轉為超額報酬
+                } else if (v.type === 'relative') {
+                    const idx2 = assets.findIndex(a => a.ticker === v.asset2);
+                    if (idx2 >= 0) {
+                        P[k][idx1] = 1;
+                        P[k][idx2] = -1;
+                        Q.push(v.value / 100); // 相對觀點本身即為超額差距
+                    }
+                }
+            });
+
+            const P_mat = math.matrix(P);
+            const Q_vec = math.matrix(Q);
+
+            // Omega 矩陣：使用 Idzorek 方法，假設觀點誤差與資產變異數成正比
+            let Omega = math.zeros([K, K]).toArray();
+            const P_tauSigma_Pt = math.multiply(math.multiply(P_mat, tauSigma), math.transpose(P_mat)).toArray();
+            for(let k=0; k<K; k++) {
+                Omega[k][k] = P_tauSigma_Pt[k][k]; 
+                if(Omega[k][k] === 0) Omega[k][k] = 0.0001; // 避免奇異矩陣
+            }
+            const invOmega = math.inv(math.matrix(Omega));
+
+            // 3. 貝式推論：後驗報酬矩陣運算 (Posterior Excess Returns)
+            // term1 = inv(invTauSigma + P^T * invOmega * P)
+            const Pt_invOmega_P = math.multiply(math.multiply(math.transpose(P_mat), invOmega), P_mat);
+            const term1 = math.inv(math.add(invTauSigma, Pt_invOmega_P));
+
+            // term2 = invTauSigma * Pi_excess + P^T * invOmega * Q
+            const partA = math.multiply(invTauSigma, Pi_excess);
+            const partB = math.multiply(math.multiply(math.transpose(P_mat), invOmega), Q_vec);
+            const term2 = math.add(partA, partB);
+
+            const posterior_excess = math.multiply(term1, term2).toArray();
+
+            // 將後驗超額報酬加回無風險利率
+            return posterior_excess.map(p => p + rf);
         }
 
         function runMonteCarlo() {
             const ctx = document.getElementById('mcChart');
             if(chartMC) chartMC.destroy(); 
 
-            const assets = [];
-            for (const cat in groupedHoldings.value) {
-                groupedHoldings.value[cat].items.forEach(item => {
-                    if(item.beta > 0 && item.stdDev > 0) assets.push(item);
-                });
-            }
+            // 【修改】直接使用我們在 Step 2 寫好的 Computed
+            const assets = mcAvailableAssets.value;
+            
             if(assets.length === 0) {
                 alert("請先在「庫存」分頁填寫標的的 Beta 與 標準差 (不能為0)");
                 showMCModal.value = false; return;
@@ -1371,11 +1463,16 @@ createApp({
             const n_assets = assets.length;
             const minWeight = 0.05; 
             if (n_assets * minWeight > 1.0) {
-                alert(`標的數量 (${n_assets} 檔) 過多，無法滿足每檔最低 ${minWeight * 100}% 的限制！請刪減標的或降低最低權重。`);
+                alert(`標的數量 (${n_assets} 檔) 過多，無法滿足每檔最低 ${minWeight * 100}% 的限制！`);
                 showMCModal.value = false; return;
             }
             const remainingWeight = 1.0 - (n_assets * minWeight);
             const n_portfolios = 5000;
+
+            const { rm, sm, rf, stressCorr, m_skew, m_kurt_ex } = regimeParams[macroRegime.value];
+
+            // 【修改】把 blViews.value 傳遞進去！
+            const bl_expected_returns = calculateBlackLitterman(assets, rm, rf, sm, blViews.value);
 
             // 1. 馬可夫狀態加入「市場偏度(m_skew)」與「市場超額峭度(m_kurt_ex)」
             const regimeParams = {
@@ -1779,7 +1876,7 @@ createApp({
             isAppReady, showMCModal, mcOptimal, openMonteCarlo, aiInsights, isAiExpanded, quantDays,
             fireTargets, activeFireStageIndex, activeFireTarget, isLoggedIn, loginEmail, loginPassword, loginError, 
             isAuthenticating, handleLogin, handleLogout, checkAuth, fireProgress, 
-            updateCharts, addFireTarget, macroRegime, enableBlackSwan, mcRisk, enableInflation
+            updateCharts, addFireTarget, macroRegime, enableBlackSwan, mcRisk, blViews, mcAvailableAssets, addBlView, enableInflation
         };
     }
 }).mount('#app');
