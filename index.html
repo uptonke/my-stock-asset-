@@ -717,76 +717,50 @@ createApp({
             }
         }
         // ==========================================
-        // 🤖 量化觀點生成器 (Multi-Factor Generator)
+        // 🤖 量化觀點生成器 (Momentum Factor Generator)
         // ==========================================
         function generateAutoViews() {
             const assets = [...mcAvailableAssets.value];
-            if (assets.length < 3) {
-                alert("需要至少 3 檔合格標的，才能進行多因子 AI 預測。");
+            if (assets.length < 2) {
+                alert("需要至少 2 檔合格標的才能進行 AI 動能預測。");
                 return;
             }
 
-            // 1. 清空現有觀點
+            // 1. 清空現有的主觀觀點
             blViews.value = [];
 
-            // =================================================
-            // 因子 1：風險調整後動能 (Risk-Adjusted Momentum)
-            // 邏輯：(未實現報酬 / 標準差) 最大的勝過最小的
-            // =================================================
-            const momentumAssets = [...assets].sort((a, b) => {
-                const scoreA = parseFloat(a.returnRate) / (a.stdDev || 1);
-                const scoreB = parseFloat(b.returnRate) / (b.stdDev || 1);
-                return scoreB - scoreA;
-            });
-            const strongest = momentumAssets[0];
-            const weakest = momentumAssets[momentumAssets.length - 1];
+            // 2. 動能因子排序：以「未實現報酬率 (returnRate)」作為近期強弱指標，由大排到小
+            assets.sort((a, b) => parseFloat(b.returnRate) - parseFloat(a.returnRate));
+
+            const strongest = assets[0];
+            const weakest = assets[assets.length - 1];
+
+            // 3. 生成【相對觀點】：強者恆強
+            // 預測最強勢標的將勝過最弱勢標的。勝出幅度設定為兩者標準差平均值的 0.5 倍 (保守風控)
+            const expectedOutperformance = ((strongest.stdDev + weakest.stdDev) / 2) * 0.5;
             
             blViews.value.push({
                 type: 'relative',
                 asset1: strongest.ticker,
                 asset2: weakest.ticker,
-                value: parseFloat((((strongest.stdDev + weakest.stdDev) / 2) * 0.4).toFixed(1)) // 勝出幅度設為兩者均向波動率的 0.4 倍
+                value: parseFloat(expectedOutperformance.toFixed(1))
             });
 
-            // =================================================
-            // 因子 2：總經 Beta 交易 (Regime-Beta Factor)
-            // 邏輯：狂牛市(高Beta贏)、熊市/金融海嘯(低Beta贏)
-            // =================================================
-            const betaAssets = [...assets].sort((a, b) => b.beta - a.beta);
-            const highBeta = betaAssets[0];
-            const lowBeta = betaAssets[betaAssets.length - 1];
-
-            if (macroRegime.value === 'Bull') {
+            // 4. 生成【絕對觀點】：給予次強標的額外的 Alpha
+            if (assets.length >= 3) {
+                const secondStrongest = assets[1];
+                // 預期報酬 = 無風險利率 + Beta * (市場溢酬) + 3% (動能 Alpha)
+                const rf = riskParams.value.rf;
+                const rm = riskParams.value.rm;
+                const expectedReturn = rf + secondStrongest.beta * (rm - rf) + 3.0;
+                
                 blViews.value.push({
-                    type: 'relative',
-                    asset1: highBeta.ticker,
-                    asset2: lowBeta.ticker,
-                    value: parseFloat(((highBeta.beta - lowBeta.beta) * 6.0).toFixed(1)) // 牛市每多 1 Beta，預期多贏 6%
-                });
-            } else if (macroRegime.value === 'Bear' || macroRegime.value === 'Crisis') {
-                blViews.value.push({
-                    type: 'relative',
-                    asset1: lowBeta.ticker,
-                    asset2: highBeta.ticker,
-                    value: parseFloat(((highBeta.beta - lowBeta.beta) * 8.0).toFixed(1)) // 熊市高 Beta 崩盤，低 Beta 勝出
+                    type: 'absolute',
+                    asset1: secondStrongest.ticker,
+                    asset2: strongest.ticker, // 絕對觀點用不到這個欄位
+                    value: parseFloat(expectedReturn.toFixed(1))
                 });
             }
-
-            // =================================================
-            // 因子 3：低波動防禦溢酬 (Low Volatility Anomaly)
-            // 邏輯：給予庫存中最穩（標準差最低）的標的，一個穩健的絕對報酬底線
-            // =================================================
-            const volAssets = [...assets].sort((a, b) => a.stdDev - b.stdDev);
-            const lowestVol = volAssets[0];
-            const rf = riskParams.value.rf;
-            
-            blViews.value.push({
-                type: 'absolute',
-                asset1: lowestVol.ticker,
-                asset2: lowestVol.ticker, // 絕對觀點無效位
-                // 預期報酬 = 無風險利率 + 低波動固定溢酬 (2.5%)
-                value: parseFloat((rf + 2.5).toFixed(1)) 
-            });
         }
         const currentTab = ref('summary');
         const isAiExpanded = ref(false); // 控制 AI 報告展開/折疊
